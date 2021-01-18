@@ -1,0 +1,293 @@
+#!/usr/bin/env python3
+
+# Weka Snapshot Management Daemon
+# Vince Fleming
+# vince@weka.io
+#
+VERSION="0.1.0"
+
+# system imports
+import logging
+import logging.handlers
+from logging import debug, info, warning, error, critical
+import argparse
+import os
+import sys
+import time
+import traceback
+from multiprocessing import Process
+import threading
+import json
+import yaml
+import datetime
+from urllib3 import add_stderr_logger
+
+# local imports
+#import jrpc
+from wekacluster import WekaCluster
+import signals
+from snapshots import SnapSchedule, MonthlySchedule, WeeklySchedule, DailySchedule, HourlySchedule
+
+#class SnapService(jrpc.service.SocketObject):
+#    @jrpc.service.method
+#    def echo(self, msg):
+#        return msg
+#
+#def start_api(port, debug):
+#    server = SimpleService(port, debug=debug) #Include the listening port
+#    server.run_wait()
+
+test_config = {
+        "schedules": {
+            "custom1": {
+                "monthly": {
+                    "date": 2,
+                    "time": 1100,
+                    "retain": 12
+                    },
+                "weekly": {
+                    "weekday": 6,
+                    "time": 0,
+                    "retain": 4
+                    },
+                "daily": {
+                    "time": 1900,
+                    "start_day": 0,
+                    "stop_day": 5,
+                    "retain": 7
+                    },
+                "hourly": {
+                    "start_day": 0,
+                    "stop_day": 5,
+                    "start_time": 800,
+                    "stop_time": 2100,
+                    "retain": 24
+                    }
+                }
+            },
+        "filesystems": {
+            "myfirstfs": {
+                "schedule": "default",
+                "upload": False
+                },
+            "fs_ingroup2": {
+                "schedule": "default",
+                "upload": False
+                },
+            "fs01": {
+                "schedule": "custom1",
+                "upload": False
+                }
+            }
+        }
+
+
+if __name__ == '__main__':
+    # handle signals (ie: ^C and such)
+    signals.signal_handling()
+
+    parser = argparse.ArgumentParser(description="Weka Snapshot Management Daemon")
+    parser.add_argument("-c", "--configfile", dest='configfile', default="./weka_snapd.yml", help="override ./weka_snapd.yml as config file")
+    parser.add_argument("-p", "--port", dest='port', default="13999", help="TCP port number to listen on")
+    parser.add_argument( 'clusterspec', default="localhost", help="Cluster specification.  <host>,<host>,...:authfile" )
+    parser.add_argument("-v", "--verbosity", action="count", default=0, help="increase output verbosity")
+    parser.add_argument("--version", dest="version", default=False, action="store_true", help="Display version number")
+    args = parser.parse_args()
+
+    if args.version:
+        print( f"{sys.argv[0]} version {VERSION}" )
+        sys.exit( 0 )
+
+    if args.verbosity == 0:
+        loglevel = logging.ERROR
+    elif args.verbosity == 1:
+        loglevel = logging.WARNING
+    elif args.verbosity == 2:
+        loglevel = logging.INFO
+    elif args.verbosity > 2:
+        loglevel = logging.DEBUG
+
+    # set the root logger
+    logger = logging.getLogger()
+    FORMAT = "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(message)s"
+    #logging.basicConfig(format=FORMAT)
+    logger.setLevel(loglevel)
+
+    # create handler to log to syslog
+    syslog_handler = logging.handlers.SysLogHandler(address="/dev/log")
+    #syslog_handler.setLevel(loglevel)
+    #syslog_handler.setFormatter(logging.Formatter(os.path.basename( sys.argv[0] ) + ': %(levelname)s: %(message)s'))
+    syslog_handler.setFormatter(logging.Formatter(FORMAT))
+
+    # create handler to log to stderr
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(FORMAT))
+    #console_handler.setLevel(loglevel)
+
+    # add handlers to root logger
+    logger.addHandler(syslog_handler)
+    logger.addHandler(console_handler)
+
+    # configure logging in signals module
+    #sublog = logging.getLogger( "signals" )
+    #sublog.setLevel(loglevel)
+
+    # configure logging in wekacluster module
+    sublog = logging.getLogger( "wekacluster" )
+    sublog.setLevel(logging.INFO)
+
+    # configure logging in wekaapi module
+    sublog = logging.getLogger( "wekaapi" )
+    sublog.setLevel(logging.INFO)
+
+    # configure logging in sthreads module
+    sublog = logging.getLogger( "sthreads" )
+    sublog.setLevel(logging.ERROR)
+
+    # configure logging in circular module
+    logging.getLogger("circular").setLevel(logging.INFO)
+
+    # configure logging in snapshots module
+    logging.getLogger("snapshots").setLevel(logging.INFO)
+
+    # configure logging in connectionpool module
+    #logging.getLogger("connectionpool").setLevel(logging.ERROR)
+    #logging.getLogger("retry").setLevel(logging.ERROR)
+    # urllib3 logging
+    add_stderr_logger(level=logging.ERROR)
+
+    # configuration JRPC API
+    #api_thread = threading.Thread(target=start_api, args=(args.port, True))
+
+    with open(args.configfile, 'r') as f:
+        config = yaml.load(stream=f)
+
+    #logger.debug(f"{json.dumps(config)}")
+
+    #subprocesses = {}
+    #port = int(args.port)
+
+    # create Cluster object so we can use the Weka API
+    clusterspeclist = args.clusterspec.split(":")
+    if len(clusterspeclist) > 1:
+        cluster_auth = clusterspeclist[1]
+    else:
+        cluster_auth = None
+
+    cluster_obj = WekaCluster(clusterspeclist[0], cluster_auth)
+
+    logging.info(f"{sys.argv[0]} starting")
+
+    # configure snap schedules
+    schedules = {}
+    monthly = MonthlySchedule()
+    weekly = WeeklySchedule()
+    daily = DailySchedule()
+    hourly = HourlySchedule()
+    schedules["default"] = SnapSchedule("default", monthly, weekly, daily, hourly) # defalt schedule, always there
+
+    # custom schedules
+    config_schedules = config["schedules"]
+    for schedname, sched in config_schedules.items():
+        #logger.debug(f"schedname={schedname}, sched={sched}")
+        monthly = MonthlySchedule(date=sched['monthly']['date'], time=sched['monthly']['time'], retain=sched['monthly']['retain'])
+        weekly = WeeklySchedule(weekday=sched['weekly']['weekday'], time=sched['weekly']['time'], retain=sched['weekly']['retain'])
+        daily = DailySchedule(time=sched['daily']['time'], start_day=sched['daily']['start_day'], stop_day=sched['daily']['stop_day'], retain=sched['daily']['retain'])
+        hourly = HourlySchedule(start_day=sched['hourly']['start_day'], stop_day=sched['hourly']['stop_day'], start_time=sched['hourly']['start_time'], stop_time=sched['hourly']['stop_time'], retain=sched['hourly']['retain'])
+        schedules[schedname] = SnapSchedule(schedname, monthly, weekly, daily, hourly)
+
+    # let's get to work!
+
+    filesystems = config["filesystems"]
+
+    while True:
+        # go get a list of existing snaps in the cluster
+        snapshots = cluster_obj.call_api(method="snapshots_list",parms={})
+        sorted_snaps = {}
+        for snapshot in snapshots:
+            fsname = snapshot["filesystem"]
+            snapname = snapshot["name"]
+            # make sure it's one of ours, not one made by the customer
+            snap_list = snapname.split('.')
+            if len(snap_list) != 2:     #first hint - schedule.time is the format; must be 2 here 
+                continue
+            if snap_list[0] not in ["monthly","weekly","daily","hourly"]:    # ours start with the schedule name
+                continue
+
+            # got one of ours, record it
+            if fsname not in sorted_snaps:
+                sorted_snaps[fsname] = []
+            sorted_snaps[fsname].append(snapname)
+
+        #print(json.dumps(sorted_snaps, indent=4))
+        #created_snap = cluster_obj.call_api(method="snapshot_create",parms={"access_point":"myaccesspoint","file_system":"fs01","is_writable":False,"name":"snapname2"})
+        #deleted_snap = cluster_obj.call_api(method="snapshot_delete",parms={"file_system":"fs01","name":"snapname2"})
+
+        now = datetime.datetime.now()
+        logger.info(f"current time is {now}")
+        #now = datetime.datetime(2020,12,31,23,59,45) # for testing
+
+        have_slept = False
+
+        for fsname, filesystem in filesystems.items():
+            schedname = filesystem["schedule"]
+            schedule = schedules[schedname]
+            next_snap = schedule.next_snap(now)
+
+            logger.info(f"next snap for {fsname} will be a {schedule.name} at: {next_snap}")
+
+            time_to_snap = next_snap.next_snaptime(now) - now
+
+            # is there a snap to be done now?
+            if time_to_snap < datetime.timedelta(minutes=1):
+                if not have_slept:
+                    logger.debug(f"less than 1 min to go to snapshot time! Sleeping until time to snap")
+                    sleep_time = time_to_snap.total_seconds()
+                    if sleep_time < 0:
+                        logger.error(f"negative sleep time {sleep_time}. now={now}, next_snap={next_snap}")
+                    time.sleep(sleep_time)
+                have_slept = True
+
+                # process snapshots
+                next_snapname = next_snap.name + "." + next_snap.next_snaptime(now).strftime("%Y-%m-%d_%H%M")
+                logger.info(f"Next snapname is {next_snapname}")
+
+                if next_snap.retain > 0:    # number of snaps to keep >0
+                    # create a snap
+                    logger.debug(f"snap {next_snapname} to be created on fs {fsname}")
+                    try:
+                        created_snap = cluster_obj.call_api(method="snapshot_create",parms={
+                            "file_system":fsname,
+                            "name":next_snapname,
+                            "access_point":next_snapname,
+                            "is_writable":False})
+                        logger.info(f"snap {next_snapname} has been created on fs {fsname}")
+                        # needs error-checking
+                    except Exception as exc:
+                        logger.error(f"error creating snapshot {next_snapname} on filesystem {fsname}: {exc}")
+
+                    # delete old snaps
+                    logger.info(f"fs {fsname} should keep {next_snap.retain} {next_snap.name} snaps, and currently has {len(sorted_snaps[fsname])} of them")
+                    if len(sorted_snaps[fsname]) > next_snap.retain:
+                        # need to delete at least 1 snap - oldest first
+                        logger.debug(f"cleaning up old snaps")
+                        count = 0
+                        for snap in sorted(sorted_snaps[fsname]):
+                            logger.info(f"looking at snap {fsname}/{snap}")
+                            count += 1
+                            if count > next_snap.retain:
+                                logger.info(f"snap {fsname}/{snap} being deleted")
+                                try:
+                                    deleted_snap = cluster_obj.call_api(method="snapshot_delete",parms={"file_system":fsname,"name":snap})
+                                except Exception as exc:
+                                    logger.error(f"error deleting snapshot {snap} from filesystem {fsname}: {exc}")
+
+
+            # next - snapshot uploads
+            #try:
+                #uploaded_snap = cluster_obj.call_api(method="snapshot_upload",parms={"file_system":fsname,"name":snap})
+            #except Exception as exc:
+            #    logger.error(f"error uploading snapshot {snap} from filesystem {fsname}: {exc}")
+        logger.debug(f"Nothing to do; sleeping 1 min")
+        time.sleep(60)
+

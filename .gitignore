@@ -1,0 +1,10 @@
+# OSX trash
+.DS_Store
+
+__pycache__
+__pycache__/*
+loki_data/*
+prometheus_data/*
+.*.swp
+etc_alertmanager/alertmanager.yml
+var_lib_grafana/grafana.db

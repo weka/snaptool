@@ -1,0 +1,32 @@
+---
+filesystems:
+  fs01:
+    schedule: custom1
+    upload: false
+  fs_ingroup2:
+    schedule: default
+    upload: false
+  myfirstfs:
+    schedule: default
+    upload: false
+schedules:
+  custom1:
+    monthly:
+      date: 2
+      retain: 12
+      time: 1100
+    weekly:
+      retain: 4
+      time: 0
+      weekday: 6
+    daily:
+      retain: 7
+      start_day: 0
+      stop_day: 5
+      time: 1900
+    hourly:
+      retain: 24
+      start_day: 0
+      start_time: 800
+      stop_day: 5
+      stop_time: 2100
