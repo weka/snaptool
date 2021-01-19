@@ -73,6 +73,7 @@ class MonthlySchedule(BaseSchedule):
                 temp_date = now + time_delta    # do this to make sure it rolls to next year, if needed
                 target_datetime = datetime.datetime(temp_date.year, temp_date.month, self.date, self.hour, self.minute)
                 self.nextsnap_dt = target_datetime
+        log.debug(f"(monthly), returning self.nextsnap_dt={self.nextsnap_dt}")
         return self.nextsnap_dt
 
 class WeeklySchedule(BaseSchedule):
@@ -109,6 +110,7 @@ class WeeklySchedule(BaseSchedule):
             target_datetime = datetime.datetime(temp_date.year, temp_date.month, temp_date.day, self.hour, self.minute)
             log.debug(f"target_datetime = {target_datetime}")
             self.nextsnap_dt = target_datetime
+        log.debug(f"(weekly), returning self.nextsnap_dt={self.nextsnap_dt}")
         return self.nextsnap_dt
 
 
@@ -131,6 +133,7 @@ class DailySchedule(BaseSchedule):
                 # schedule for tomorrow
                 temp_date = now + datetime.timedelta(days=1)
                 self.nextsnap_dt = datetime.datetime(temp_date.year, temp_date.month, temp_date.day, self.hour, self.minute)
+        log.debug(f"(daily), returning self.nextsnap_dt={self.nextsnap_dt}")
         return self.nextsnap_dt
 
 class HourlySchedule(BaseSchedule):
@@ -161,9 +164,9 @@ class HourlySchedule(BaseSchedule):
                     stop_dt = datetime.datetime(now.year, now.month, now.day, self.stop_hour, self.snap_minute)
                     log.debug(f"start_dt = {start_dt}, stop_dt = {stop_dt}")
                     if now > start_dt and now < stop_dt:
-                        log.debug(f"within hours")
+                        log.debug(f"within hours, now.minute={now.minute}, self.snap_minute={self.snap_minute}")
                         # we're within the hours they want snaps
-                        if now.minute < self.snap_minute:
+                        if now.minute <= self.snap_minute:
                             # upcoming this hour
                             self.nextsnap_dt = datetime.datetime(now.year, now.month, now.day, now.hour, self.snap_minute)
                         else:
@@ -171,7 +174,7 @@ class HourlySchedule(BaseSchedule):
                             temp_date = now + datetime.timedelta(hours=1)
                             temp_date2 = datetime.datetime(temp_date.year, temp_date.month, temp_date.day, temp_date.hour, self.snap_minute)
                             log.debug(f"temp_date2 = {temp_date2}, stop_dt = {stop_dt}")
-                            if temp_date2 < stop_dt:
+                            if temp_date2 <= stop_dt:
                                 self.nextsnap_dt = temp_date2
                             else:
                                 log.debug("outside hours after bump")
