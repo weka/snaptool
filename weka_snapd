@@ -21,66 +21,30 @@ import json
 import yaml
 import datetime
 from urllib3 import add_stderr_logger
+import queue
 
-# local imports
-#import jrpc
 from wekacluster import WekaCluster
 import signals
 from snapshots import SnapSchedule, MonthlySchedule, WeeklySchedule, DailySchedule, HourlySchedule
+from upload import UploadSnapshot, replay_upload_intent_log
 
-#class SnapService(jrpc.service.SocketObject):
-#    @jrpc.service.method
-#    def echo(self, msg):
-#        return msg
-#
-#def start_api(port, debug):
-#    server = SimpleService(port, debug=debug) #Include the listening port
-#    server.run_wait()
-
-test_config = {
-        "schedules": {
-            "custom1": {
-                "monthly": {
-                    "date": 2,
-                    "time": 1100,
-                    "retain": 12
-                    },
-                "weekly": {
-                    "weekday": 6,
-                    "time": 0,
-                    "retain": 4
-                    },
-                "daily": {
-                    "time": 1900,
-                    "start_day": 0,
-                    "stop_day": 5,
-                    "retain": 7
-                    },
-                "hourly": {
-                    "start_day": 0,
-                    "stop_day": 5,
-                    "start_time": 800,
-                    "stop_time": 2100,
-                    "retain": 24
-                    }
-                }
-            },
-        "filesystems": {
-            "myfirstfs": {
-                "schedule": "default",
-                "upload": False
-                },
-            "fs_ingroup2": {
-                "schedule": "default",
-                "upload": False
-                },
-            "fs01": {
-                "schedule": "custom1",
-                "upload": False
-                }
-            }
-        }
-
+def snapd_call_api(cluster, method, parms):
+    stopit = False
+    num_errors = 0
+    while not stopit:
+        # api only fails under extreme circumstances
+        try:
+            api_return = cluster.call_api(method=method,parms=parms)
+            stopit = True
+        #except APIException as exc:
+        except Exception as exc:
+            num_errors += 1
+            logger.error(f"Error {exc} while executing API method {method}; attemping to re-establish communications (retry {num_errors})")
+            if num_errors > 10: # give up
+                raise
+            time.sleep(5)               # give the cluster some time to resolve it's issues
+            cluster.refresh_config()    # will try to re-establish communications
+    return api_return
 
 if __name__ == '__main__':
     # handle signals (ie: ^C and such)
@@ -109,7 +73,7 @@ if __name__ == '__main__':
 
     # set the root logger
     logger = logging.getLogger()
-    FORMAT = "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(message)s"
+    FORMAT = "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
     #logging.basicConfig(format=FORMAT)
     logger.setLevel(loglevel)
 
@@ -138,7 +102,7 @@ if __name__ == '__main__':
 
     # configure logging in wekaapi module
     sublog = logging.getLogger( "wekaapi" )
-    sublog.setLevel(logging.INFO)
+    sublog.setLevel(logging.DEBUG)
 
     # configure logging in sthreads module
     sublog = logging.getLogger( "sthreads" )
@@ -149,6 +113,9 @@ if __name__ == '__main__':
 
     # configure logging in snapshots module
     logging.getLogger("snapshots").setLevel(logging.INFO)
+
+    # configure logging in upload module
+    logging.getLogger("upload").setLevel(logging.DEBUG)
 
     # configure logging in connectionpool module
     #logging.getLogger("connectionpool").setLevel(logging.ERROR)
@@ -163,6 +130,11 @@ if __name__ == '__main__':
         config = yaml.load(stream=f)
 
     #logger.debug(f"{json.dumps(config)}")
+
+    #
+    # Sanity-check configuration?
+    #
+
 
     #subprocesses = {}
     #port = int(args.port)
@@ -200,9 +172,27 @@ if __name__ == '__main__':
 
     filesystems = config["filesystems"]
 
+    # upload queue for queuing object uploads
+    #uploadq = queue.Queue()
+
+    # start the background uploader
+    #upload_thread = threading.Thread(target=background_uploader, args=(uploadq,))
+    #upload_thread.start()
+
+    for fsname, snapname in replay_upload_intent_log():
+        UploadSnapshot(cluster_obj, fsname, snapname)
+
+    #logging.debug(f"upload_thread = {upload_thread}")
+
     while True:
         # go get a list of existing snaps in the cluster
-        snapshots = cluster_obj.call_api(method="snapshots_list",parms={})
+        try:
+            #snapshots = cluster_obj.call_api(method="snapshots_list",parms={})
+            snapshots = snapd_call_api(cluster_obj, method="snapshots_list",parms={})
+        except Exception as exc:
+            logger.error(f"Error collecting snapshot list: {exc}")
+            sys.exit(1)
+
         sorted_snaps = {}
         for snapshot in snapshots:
             fsname = snapshot["filesystem"]
@@ -250,7 +240,7 @@ if __name__ == '__main__':
 
                 # process snapshots
                 next_snapname = next_snap.name + "." + next_snap.next_snaptime(now).strftime("%Y-%m-%d_%H%M")
-                logger.info(f"Next snapname is {next_snapname}")
+                logger.debug(f"Next snapname is {next_snapname}")
 
                 if next_snap.retain > 0:    # number of snaps to keep >0
                     # create a snap
@@ -266,13 +256,18 @@ if __name__ == '__main__':
                     except Exception as exc:
                         logger.error(f"error creating snapshot {next_snapname} on filesystem {fsname}: {exc}")
 
+                    # upload it?
+                    if filesystem['upload']:
+                        # if upload is True, queue it for uploading
+                        UploadSnapshot(cluster_obj, fsname, next_snapname)
+
                     # delete old snaps
                     logger.info(f"fs {fsname} should keep {next_snap.retain} {next_snap.name} snaps, and currently has {len(sorted_snaps[fsname])} of them")
                     if len(sorted_snaps[fsname]) > next_snap.retain:
                         # need to delete at least 1 snap - oldest first
                         logger.debug(f"cleaning up old snaps")
                         count = 0
-                        for snap in sorted(sorted_snaps[fsname]):
+                        for snap in sorted(sorted_snaps[fsname]):   # sorted so oldest come up first
                             logger.info(f"looking at snap {fsname}/{snap}")
                             count += 1
                             if count > next_snap.retain:
@@ -291,3 +286,5 @@ if __name__ == '__main__':
         logger.debug(f"Nothing to do; sleeping 1 min")
         time.sleep(60)
 
+#logging.debug(f"terminating")
+#UploadSnapshot(uploadq, "WEKA_TERMINATE_THREAD", "WEKA_TERMINATE_THREAD")

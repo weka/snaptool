@@ -14,6 +14,11 @@ from threading import Lock
 import json
 
 log = getLogger(__name__)
+ 
+class APIException(Exception):
+    def __init__(self, error_code, error_msg):
+        self.error_code = error_code
+        self.error_msg = error_msg
 
 class WekaHost(object):
     def __init__(self, hostname, cluster):
@@ -180,31 +185,28 @@ class WekaCluster(object):
 
     # cluster-level call_api() will retry commands on another host in the cluster on failure
     def call_api( self, method=None, parms={} ):
-        #hostname = self.hosts.next()
-        #if hostname == None:
-        #    # no hosts?
-        #    raise Exception("unable to communicate with cluster - no hosts in host list")
-        #try:
-        #    host = self.host_dict[hostname]
-        #except:
-        #    log.error(f"hostname {hostname} not in host_dict. host_dict={host_dict}")
-        #    return
+
         host = self.hosts.next()
 
         api_return = None
+        last_exception = None
+
         while host != None:
             self.cluster_in_progress += 1
             try:
                 log.debug(f"calling Weka API on cluster {self}, host {host}, method {method}, {self.cluster_in_progress} in progress for cluster")
                 api_return = host.call_api( method, parms )
             except wekaapi.WekaApiIOStopped as exc:
+                last_exception = exc    # should we bother?
                 log.error(f"IO Stopped on Cluster {self}")
                 raise
+            #<class 'wekaapi.HttpException'> error (502, 'Bad Gateway') - if we get this, leader failing over; wait a few secs and retry?
+            except wekaapi.HttpException as exc:
+                last_exception = exc
             except Exception as exc:
+                last_exception = exc
                 self.cluster_in_progress -= 1
                 # something went wrong...  stop talking to this host from here on.  We'll try to re-establish communications later
-                #last_hostname = hostname
-                #self.hosts.remove(last_hostname)     # remove it from the hostlist iterable
                 last_hostname = str(host)
                 self.hosts.remove(host) # it failed, so remove it from the list
                 host = self.hosts.next()
@@ -219,7 +221,10 @@ class WekaCluster(object):
             return api_return
 
         # ran out of hosts to talk to!
-        raise Exception("unable to communicate with cluster")
+        if type(last_exception) == wekaapi.HttpException:
+            if last_exception.error_code == 503:    # Bad Gateway - it indicates a leader failover in progress
+                raise APIException(503, "No hosts available; leader failover")
+        raise APIException(100, "General communication failure")
 
         # ------------- end of call_api() -------------
 
