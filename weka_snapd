@@ -74,13 +74,10 @@ if __name__ == '__main__':
     # set the root logger
     logger = logging.getLogger()
     FORMAT = "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
-    #logging.basicConfig(format=FORMAT)
     logger.setLevel(loglevel)
 
     # create handler to log to syslog
     syslog_handler = logging.handlers.SysLogHandler(address="/dev/log")
-    #syslog_handler.setLevel(loglevel)
-    #syslog_handler.setFormatter(logging.Formatter(os.path.basename( sys.argv[0] ) + ': %(levelname)s: %(message)s'))
     syslog_handler.setFormatter(logging.Formatter(FORMAT))
 
     # create handler to log to stderr
@@ -102,7 +99,7 @@ if __name__ == '__main__':
 
     # configure logging in wekaapi module
     sublog = logging.getLogger( "wekaapi" )
-    sublog.setLevel(logging.DEBUG)
+    sublog.setLevel(logging.ERROR)
 
     # configure logging in sthreads module
     sublog = logging.getLogger( "sthreads" )
@@ -112,7 +109,7 @@ if __name__ == '__main__':
     logging.getLogger("circular").setLevel(logging.INFO)
 
     # configure logging in snapshots module
-    logging.getLogger("snapshots").setLevel(logging.INFO)
+    logging.getLogger("snapshots").setLevel(logging.DEBUG)
 
     # configure logging in upload module
     logging.getLogger("upload").setLevel(logging.DEBUG)
@@ -179,8 +176,9 @@ if __name__ == '__main__':
     #upload_thread = threading.Thread(target=background_uploader, args=(uploadq,))
     #upload_thread.start()
 
-    for fsname, snapname in replay_upload_intent_log():
-        UploadSnapshot(cluster_obj, fsname, snapname)
+    replay_upload_intent_log(cluster_obj)
+    #for uuid, fsname, snapname in replay_upload_intent_log():
+    #    UploadSnapshot(cluster_obj, fsname, snapname, uuid=uuid)
 
     #logging.debug(f"upload_thread = {upload_thread}")
 
@@ -262,8 +260,10 @@ if __name__ == '__main__':
                         UploadSnapshot(cluster_obj, fsname, next_snapname)
 
                     # delete old snaps
-                    logger.info(f"fs {fsname} should keep {next_snap.retain} {next_snap.name} snaps, and currently has {len(sorted_snaps[fsname])} of them")
-                    if len(sorted_snaps[fsname]) > next_snap.retain:
+                    if fsname in sorted_snaps:
+                        logger.info(f"fs {fsname} should keep {next_snap.retain} {next_snap.name} snaps, and currently has {len(sorted_snaps[fsname])} of them")
+
+                    if fsname in sorted_snaps and len(sorted_snaps[fsname]) > next_snap.retain:
                         # need to delete at least 1 snap - oldest first
                         logger.debug(f"cleaning up old snaps")
                         count = 0

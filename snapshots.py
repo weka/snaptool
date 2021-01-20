@@ -186,12 +186,15 @@ class HourlySchedule(BaseSchedule):
                         if now < start_dt:
                             log.debug(f"before hours")
                             self.nextsnap_dt = start_dt
-                        else:
+                        elif now > start_dt:
                             # after hours - bump forward to next day
                             log.debug(f"after hours")
                             tomorrow = now + datetime.timedelta(days=1)
                             temp_date2 = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0,0) # midnight tonight
                             return self.next_snaptime(temp_date2) # recurse - it'll figure it out if we're outside days
+                        else:
+                            self.nextsnap_dt = start_dt
+                            return self.nextsnap_dt
                 else:
                     # we're outside the days specified, go forward to next week
                     log.debug(f"outside days")
