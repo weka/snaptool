@@ -19,11 +19,12 @@ class SnapSchedule():
             # self.nextsnap is old, update it
             earliest = None
             for sched in self.schedule:
-                log.debug(f"sched = {sched}, earliest = {earliest}")
-                if earliest == None:
-                    earliest = sched
-                elif sched.next_snaptime(now) < earliest.next_snaptime(now):
-                    earliest = sched
+                if sched.retain > 0:
+                    log.debug(f"sched = {sched}, earliest = {earliest}")
+                    if earliest == None:
+                        earliest = sched
+                    elif sched.next_snaptime(now) < earliest.next_snaptime(now):
+                        earliest = sched
             self.nextsnap = earliest
         return self.nextsnap    # NOTE - this returns an OBJECT
 

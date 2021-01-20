@@ -122,7 +122,10 @@ if __name__ == '__main__':
 
 
     with open(args.configfile, 'r') as f:
-        config = yaml.load(stream=f, Loader=yaml.FullLoader)
+        try:
+            config = yaml.load(stream=f, Loader=yaml.FullLoader)
+        except AttributeError:
+            config = yaml.load(stream=f)
 
     #logger.debug(f"{json.dumps(config)}")
 
@@ -154,22 +157,27 @@ if __name__ == '__main__':
     config_schedules = config["schedules"]
     for schedname, sched in config_schedules.items():
         #logger.debug(f"schedname={schedname}, sched={sched}")
-        monthly = MonthlySchedule(date=sched['monthly']['date'], time=sched['monthly']['time'], retain=sched['monthly']['retain'], upload=sched['monthly']['upload'])
-        weekly = WeeklySchedule(weekday=sched['weekly']['weekday'], time=sched['weekly']['time'], retain=sched['weekly']['retain'], upload=sched['weekly']['upload'])
-        daily = DailySchedule(time=sched['daily']['time'], start_day=sched['daily']['start_day'], stop_day=sched['daily']['stop_day'], retain=sched['daily']['retain'], upload=sched['daily']['upload'])
-        hourly = HourlySchedule(start_day=sched['hourly']['start_day'], stop_day=sched['hourly']['stop_day'], start_time=sched['hourly']['start_time'], stop_time=sched['hourly']['stop_time'], retain=sched['hourly']['retain'], upload=sched['hourly']['upload'])
+        monthly = MonthlySchedule(date=sched['monthly']['date'], time=sched['monthly']['time'], 
+                retain=sched['monthly']['retain'], upload=sched['monthly']['upload'])
+        weekly = WeeklySchedule(weekday=sched['weekly']['weekday'], time=sched['weekly']['time'], 
+                retain=sched['weekly']['retain'], upload=sched['weekly']['upload'])
+        daily = DailySchedule(time=sched['daily']['time'], start_day=sched['daily']['start_day'], 
+                stop_day=sched['daily']['stop_day'], retain=sched['daily']['retain'], upload=sched['daily']['upload'])
+        hourly = HourlySchedule(start_day=sched['hourly']['start_day'], stop_day=sched['hourly']['stop_day'], 
+                start_time=sched['hourly']['start_time'], stop_time=sched['hourly']['stop_time'], retain=sched['hourly']['retain'], upload=sched['hourly']['upload'])
         schedules[schedname] = SnapSchedule(schedname, monthly, weekly, daily, hourly)
 
     # let's get to work!
 
     filesystems = config["filesystems"]
 
-    logger.info("Replaying intent log")
+    logger.warning("Replaying intent log")
     replay_upload_intent_log(cluster_obj)
 
 
     while True:
-        # go get a list of existing snaps in the cluster
+
+        # go get a list of existing snaps in the cluster - we'll need these later if we need to delete some
         try:
             #snapshots = cluster_obj.call_api(method="snapshots_list",parms={})
             snapshots = snapd_call_api(cluster_obj, method="snapshots_list",parms={})
@@ -200,6 +208,131 @@ if __name__ == '__main__':
 
         have_slept = False
 
+        # get the next snap time for each of the filesystems so we can sort for earliest
+        next_foreach = {}
+        for fsname, filesystem in filesystems.items():
+            schedname = filesystem["schedule"]
+            schedule = schedules[schedname]
+            next_snap = schedule.next_snap(now) # get the next snapshot object
+            next_snap_time = next_snap.next_snaptime(now)   # time of next snapshot
+
+            if next_snap_time not in next_foreach:
+                next_foreach[next_snap_time] = {}
+            next_foreach[next_snap_time][fsname] = next_snap    # build a dict so we can sort by snaptime; each "time" is a list of fs's
+
+        logger.debug(f"next_foreach[next_snap_time] = {next_foreach[next_snap_time]}, next snap_time = {next_snap_time}")
+        logger.debug(f"next_foreach= {next_foreach}")
+        next_snaptime = min(next_foreach)       # get the earliest snaptime
+        #logger.debug(f"Next snapshot due to be taken at = {next_snaptime}")
+
+        # we should now sleep until next_snaptime; it's the next time we need to take a snap...
+        time_to_snap = next_snaptime - now      # time_to_snap will be a datetime.timedelta object
+        #time_to_snap -= datetime.timedelta(seconds=10)     # come in 10s early?
+        sleep_time = time_to_snap.total_seconds()
+        logger.info(f"Next snapshot due to be taken at = {next_snaptime}; sleeping {sleep_time}s ({time_to_snap} h:m:s.us)")
+        time.sleep(sleep_time)
+
+
+        # loop through 
+        for fsname, next_snap in next_foreach[next_snaptime].items():   # current list of snaps that need to be taken
+            next_snapname = next_snap.name + "." + next_snap.next_snaptime(now).strftime("%Y-%m-%d_%H%M")
+            logger.debug(f"Next snapname is {next_snapname}")
+
+            # create a snap
+            logger.debug(f"snap {next_snapname} to be created on fs {fsname}")
+            try:
+                created_snap = cluster_obj.call_api(method="snapshot_create",parms={
+                    "file_system":fsname,
+                    "name":next_snapname,
+                    "access_point":next_snapname,
+                    "is_writable":False})
+                logger.info(f"snap {next_snapname} has been created on fs {fsname}")
+                # needs error-checking
+            except Exception as exc:
+                logger.error(f"error creating snapshot {next_snapname} on filesystem {fsname}: {exc}")
+
+            # upload it?
+            if next_snap.upload:
+                # if upload is True, queue it for uploading
+                UploadSnapshot(cluster_obj, fsname, next_snapname)
+
+        # - vince - indents matter here.  Look at this again.
+        # should we loop through the list again after creating all snaps, or delete as we go?
+
+        # go get a list of existing snaps in the cluster - we'll need these later if we need to delete some
+        try:
+            #snapshots = cluster_obj.call_api(method="snapshots_list",parms={})
+            snapshots = snapd_call_api(cluster_obj, method="snapshots_list",parms={})
+        except Exception as exc:
+            logger.error(f"Error collecting snapshot list: {exc}")
+            sys.exit(1)
+
+        sorted_snaps = {}
+        for snapshot in snapshots:
+            fsname = snapshot["filesystem"]
+            snapname = snapshot["name"]
+            # make sure it's one of ours, not one made by the customer
+            snap_list = snapname.split('.')
+            if len(snap_list) != 2:     #first hint - schedule.time is the format; must be 2 here 
+                continue
+            if snap_list[0] not in ["monthly","weekly","daily","hourly"]:    # ours start with the schedule name
+                continue
+
+            # got one of ours, record it
+            if fsname not in sorted_snaps:
+                sorted_snaps[fsname] = []
+            sorted_snaps[fsname].append(snapname)
+
+        # delete old snaps
+        for fsname, next_snap in next_foreach[next_snaptime].items():   # current list of snaps that have been taken
+            if fsname in sorted_snaps:
+                logger.debug(f"fs {fsname} should keep {next_snap.retain} {next_snap.name} snaps, and currently has {len(sorted_snaps[fsname])} of them")
+            # make a list of this schedule's snaps...
+            snap_list = []
+            if fsname in sorted_snaps:
+                fs_snaps = sorted_snaps[fsname]
+                for snapname in fs_snaps:
+                    temp_list = snapname.split('.')
+                    # make sure it's one of ours
+                    if len(temp_list) != 2 and temp_list[0] not in ["monthly","weekly","daily","hourly"]:    # ours start with the schedule name
+                        # continue here?  don't think so
+                        continue
+                    # if the correct schedule (ie: monthly, weekly, etc), keep it
+                    if temp_list[0] == next_snap.name:
+                        snap_list.append(snapname)
+
+                    delete_list = sorted(snap_list)[next_snap.retain:]
+                    log.debug(f"delete_list = {delete_list}")
+                    for snap in delete_list:
+                        logger.info(f"snap {fsname}/{snap} being deleted")
+                        try:
+                            deleted_snap = cluster_obj.call_api(method="snapshot_delete",parms={"file_system":fsname,"name":snap})
+                            logger.info(f"snap {fsname}/{snap} sucessfully deleted")
+                        except Exception as exc:
+                            logger.error(f"error deleting snapshot {snap} from filesystem {fsname}: {exc}")
+                    
+
+
+
+"""
+
+            if fsname in sorted_snaps and len(sorted_snaps[fsname]) > next_snap.retain:
+                # need to delete at least 1 snap - oldest first
+                logger.debug(f"cleaning up old snaps")
+                count = 0
+                for snap in sorted(sorted_snaps[fsname]):   # sorted so oldest come up first
+                    logger.debug(f"looking at snap {fsname}/{snap}")
+                    count += 1
+                    if count > next_snap.retain:
+                        logger.info(f"snap {fsname}/{snap} being deleted")
+                        try:
+                            deleted_snap = cluster_obj.call_api(method="snapshot_delete",parms={"file_system":fsname,"name":snap})
+                        except Exception as exc:
+                            logger.error(f"error deleting snapshot {snap} from filesystem {fsname}: {exc}")
+
+
+        # old code
+
         for fsname, filesystem in filesystems.items():
             schedname = filesystem["schedule"]
             schedule = schedules[schedname]
@@ -224,6 +357,7 @@ if __name__ == '__main__':
                 logger.debug(f"Next snapname is {next_snapname}")
 
                 if next_snap.retain > 0:    # number of snaps to keep >0
+
                     # create a snap
                     logger.debug(f"snap {next_snapname} to be created on fs {fsname}")
                     try:
@@ -245,7 +379,6 @@ if __name__ == '__main__':
                     # delete old snaps
                     if fsname in sorted_snaps:
                         logger.debug(f"fs {fsname} should keep {next_snap.retain} {next_snap.name} snaps, and currently has {len(sorted_snaps[fsname])} of them")
-
                     if fsname in sorted_snaps and len(sorted_snaps[fsname]) > next_snap.retain:
                         # need to delete at least 1 snap - oldest first
                         logger.debug(f"cleaning up old snaps")
@@ -263,3 +396,4 @@ if __name__ == '__main__':
 
         logger.debug(f"Nothing to do; sleeping 1 min")
         time.sleep(60)
+"""
