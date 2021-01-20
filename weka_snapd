@@ -159,28 +159,19 @@ if __name__ == '__main__':
     config_schedules = config["schedules"]
     for schedname, sched in config_schedules.items():
         #logger.debug(f"schedname={schedname}, sched={sched}")
-        monthly = MonthlySchedule(date=sched['monthly']['date'], time=sched['monthly']['time'], retain=sched['monthly']['retain'])
-        weekly = WeeklySchedule(weekday=sched['weekly']['weekday'], time=sched['weekly']['time'], retain=sched['weekly']['retain'])
-        daily = DailySchedule(time=sched['daily']['time'], start_day=sched['daily']['start_day'], stop_day=sched['daily']['stop_day'], retain=sched['daily']['retain'])
-        hourly = HourlySchedule(start_day=sched['hourly']['start_day'], stop_day=sched['hourly']['stop_day'], start_time=sched['hourly']['start_time'], stop_time=sched['hourly']['stop_time'], retain=sched['hourly']['retain'])
+        monthly = MonthlySchedule(date=sched['monthly']['date'], time=sched['monthly']['time'], retain=sched['monthly']['retain'], upload=sched['monthly']['upload'])
+        weekly = WeeklySchedule(weekday=sched['weekly']['weekday'], time=sched['weekly']['time'], retain=sched['weekly']['retain'], upload=sched['weekly']['upload'])
+        daily = DailySchedule(time=sched['daily']['time'], start_day=sched['daily']['start_day'], stop_day=sched['daily']['stop_day'], retain=sched['daily']['retain'], upload=sched['daily']['upload'])
+        hourly = HourlySchedule(start_day=sched['hourly']['start_day'], stop_day=sched['hourly']['stop_day'], start_time=sched['hourly']['start_time'], stop_time=sched['hourly']['stop_time'], retain=sched['hourly']['retain'], upload=sched['hourly']['upload'])
         schedules[schedname] = SnapSchedule(schedname, monthly, weekly, daily, hourly)
 
     # let's get to work!
 
     filesystems = config["filesystems"]
 
-    # upload queue for queuing object uploads
-    #uploadq = queue.Queue()
-
-    # start the background uploader
-    #upload_thread = threading.Thread(target=background_uploader, args=(uploadq,))
-    #upload_thread.start()
-
+    logger.info("Replaying intent log")
     replay_upload_intent_log(cluster_obj)
-    #for uuid, fsname, snapname in replay_upload_intent_log():
-    #    UploadSnapshot(cluster_obj, fsname, snapname, uuid=uuid)
 
-    #logging.debug(f"upload_thread = {upload_thread}")
 
     while True:
         # go get a list of existing snaps in the cluster
@@ -207,9 +198,6 @@ if __name__ == '__main__':
                 sorted_snaps[fsname] = []
             sorted_snaps[fsname].append(snapname)
 
-        #print(json.dumps(sorted_snaps, indent=4))
-        #created_snap = cluster_obj.call_api(method="snapshot_create",parms={"access_point":"myaccesspoint","file_system":"fs01","is_writable":False,"name":"snapname2"})
-        #deleted_snap = cluster_obj.call_api(method="snapshot_delete",parms={"file_system":"fs01","name":"snapname2"})
 
         now = datetime.datetime.now()
         logger.info(f"current time is {now}")
@@ -255,7 +243,8 @@ if __name__ == '__main__':
                         logger.error(f"error creating snapshot {next_snapname} on filesystem {fsname}: {exc}")
 
                     # upload it?
-                    if filesystem['upload']:
+                    #if filesystem['upload']:
+                    if next_snap['upload']:
                         # if upload is True, queue it for uploading
                         UploadSnapshot(cluster_obj, fsname, next_snapname)
 

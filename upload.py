@@ -171,27 +171,31 @@ def upload_intent_iter():
     snaps = {}
     # always process both logs, just in case it just recently rolled over
     for logfile in ["upload_intent.log.1", "upload_intent.log"]:
-        with open(logfile) as f:
-            for logentry in f:
-                fields = logentry.split(':')
-                uuid = fields[0]
-                fsname = fields[1]
-                snapname = fields[2]
-                status = fields[3][:-1]     # there is a \n at the end of every line!  get rid of it
-                log.debug(f"Processing log entry {fields}")
-                if uuid not in snaps:
-                    snaps[uuid] = {}
-                    snaps[uuid]['fsname'] = fsname
-                    snaps[uuid]['snapname'] = snapname
-                    snaps[uuid]['status'] = status
-                else:
-                    #log.debug(f"status is '{status}'")
-                    if status == "complete":
-                        log.debug(f"Deleting complete snap {uuid}")
-                        del snaps[uuid]     # remove ones that completed so we don't need to look through them
+        try:
+            with open(logfile) as f:
+                for logentry in f:
+                    fields = logentry.split(':')
+                    uuid = fields[0]
+                    fsname = fields[1]
+                    snapname = fields[2]
+                    status = fields[3][:-1]     # there is a \n at the end of every line!  get rid of it
+                    log.debug(f"Processing log entry {fields}")
+                    if uuid not in snaps:
+                        snaps[uuid] = {}
+                        snaps[uuid]['fsname'] = fsname
+                        snaps[uuid]['snapname'] = snapname
+                        snaps[uuid]['status'] = status
                     else:
-                        log.debug(f"Updating status of snap {uuid} to {status}")
-                        snaps[uuid]['status'] = status    # update status
+                        #log.debug(f"status is '{status}'")
+                        if status == "complete":
+                            log.debug(f"Deleting complete snap {uuid}")
+                            del snaps[uuid]     # remove ones that completed so we don't need to look through them
+                        else:
+                            log.debug(f"Updating status of snap {uuid} to {status}")
+                            snaps[uuid]['status'] = status    # update status
+        except FileNotFoundError:
+            log.info(f"Log file {logfile} not found")
+            continue
 
     # force a rollover of the log so we start clean
     #upload_intent_handler.doRollover()
