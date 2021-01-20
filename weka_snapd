@@ -124,7 +124,7 @@ if __name__ == '__main__':
     #api_thread = threading.Thread(target=start_api, args=(args.port, True))
 
     with open(args.configfile, 'r') as f:
-        config = yaml.load(stream=f)
+        config = yaml.load(stream=f, Loader=yaml.FullLoader)
 
     #logger.debug(f"{json.dumps(config)}")
 
