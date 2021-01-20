@@ -229,7 +229,7 @@ if __name__ == '__main__':
         time_to_snap = next_snaptime - now      # time_to_snap will be a datetime.timedelta object
         #time_to_snap -= datetime.timedelta(seconds=10)     # come in 10s early?
         sleep_time = time_to_snap.total_seconds()
-        logger.info(f"Next snapshot due to be taken at = {next_snaptime}; sleeping {sleep_time}s ({time_to_snap} h:m:s.us)")
+        logger.info(f"Next snapshot due to be taken at = {next_snaptime}; now = {now} sleeping {sleep_time}s ({time_to_snap} h:m:s.us)")
         time.sleep(sleep_time)
 
 
@@ -302,7 +302,7 @@ if __name__ == '__main__':
                         snap_list.append(snapname)
 
                     delete_list = sorted(snap_list)[next_snap.retain:]
-                    log.debug(f"delete_list = {delete_list}")
+                    logger.debug(f"delete_list = {delete_list}")
                     for snap in delete_list:
                         logger.info(f"snap {fsname}/{snap} being deleted")
                         try:
