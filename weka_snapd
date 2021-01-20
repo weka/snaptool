@@ -244,7 +244,7 @@ if __name__ == '__main__':
 
                     # upload it?
                     #if filesystem['upload']:
-                    if next_snap['upload']:
+                    if next_snap.upload:
                         # if upload is True, queue it for uploading
                         UploadSnapshot(cluster_obj, fsname, next_snapname)
 
