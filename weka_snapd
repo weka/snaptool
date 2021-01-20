@@ -106,13 +106,13 @@ if __name__ == '__main__':
     sublog.setLevel(logging.ERROR)
 
     # configure logging in circular module
-    logging.getLogger("circular").setLevel(logging.INFO)
+    logging.getLogger("circular").setLevel(logging.ERROR)
 
     # configure logging in snapshots module
-    logging.getLogger("snapshots").setLevel(logging.DEBUG)
+    logging.getLogger("snapshots").setLevel(logging.INFO)
 
     # configure logging in upload module
-    logging.getLogger("upload").setLevel(logging.DEBUG)
+    logging.getLogger("upload").setLevel(logging.INFO)
 
     # configure logging in connectionpool module
     #logging.getLogger("connectionpool").setLevel(logging.ERROR)
@@ -120,8 +120,6 @@ if __name__ == '__main__':
     # urllib3 logging
     add_stderr_logger(level=logging.ERROR)
 
-    # configuration JRPC API
-    #api_thread = threading.Thread(target=start_api, args=(args.port, True))
 
     with open(args.configfile, 'r') as f:
         config = yaml.load(stream=f, Loader=yaml.FullLoader)
@@ -132,9 +130,6 @@ if __name__ == '__main__':
     # Sanity-check configuration?
     #
 
-
-    #subprocesses = {}
-    #port = int(args.port)
 
     # create Cluster object so we can use the Weka API
     clusterspeclist = args.clusterspec.split(":")
@@ -200,7 +195,7 @@ if __name__ == '__main__':
 
 
         now = datetime.datetime.now()
-        logger.info(f"current time is {now}")
+        logger.debug(f"current time is {now}")
         #now = datetime.datetime(2020,12,31,23,59,45) # for testing
 
         have_slept = False
@@ -210,7 +205,7 @@ if __name__ == '__main__':
             schedule = schedules[schedname]
             next_snap = schedule.next_snap(now)
 
-            logger.info(f"next snap for {fsname} will be a {schedule.name} at: {next_snap}")
+            logger.debug(f"next snap for {fsname} will be a {schedule.name} at: {next_snap}")
 
             time_to_snap = next_snap.next_snaptime(now) - now
 
@@ -243,21 +238,20 @@ if __name__ == '__main__':
                         logger.error(f"error creating snapshot {next_snapname} on filesystem {fsname}: {exc}")
 
                     # upload it?
-                    #if filesystem['upload']:
                     if next_snap.upload:
                         # if upload is True, queue it for uploading
                         UploadSnapshot(cluster_obj, fsname, next_snapname)
 
                     # delete old snaps
                     if fsname in sorted_snaps:
-                        logger.info(f"fs {fsname} should keep {next_snap.retain} {next_snap.name} snaps, and currently has {len(sorted_snaps[fsname])} of them")
+                        logger.debug(f"fs {fsname} should keep {next_snap.retain} {next_snap.name} snaps, and currently has {len(sorted_snaps[fsname])} of them")
 
                     if fsname in sorted_snaps and len(sorted_snaps[fsname]) > next_snap.retain:
                         # need to delete at least 1 snap - oldest first
                         logger.debug(f"cleaning up old snaps")
                         count = 0
                         for snap in sorted(sorted_snaps[fsname]):   # sorted so oldest come up first
-                            logger.info(f"looking at snap {fsname}/{snap}")
+                            logger.debug(f"looking at snap {fsname}/{snap}")
                             count += 1
                             if count > next_snap.retain:
                                 logger.info(f"snap {fsname}/{snap} being deleted")
@@ -267,13 +261,5 @@ if __name__ == '__main__':
                                     logger.error(f"error deleting snapshot {snap} from filesystem {fsname}: {exc}")
 
 
-            # next - snapshot uploads
-            #try:
-                #uploaded_snap = cluster_obj.call_api(method="snapshot_upload",parms={"file_system":fsname,"name":snap})
-            #except Exception as exc:
-            #    logger.error(f"error uploading snapshot {snap} from filesystem {fsname}: {exc}")
         logger.debug(f"Nothing to do; sleeping 1 min")
         time.sleep(60)
-
-#logging.debug(f"terminating")
-#UploadSnapshot(uploadq, "WEKA_TERMINATE_THREAD", "WEKA_TERMINATE_THREAD")

@@ -129,7 +129,7 @@ def background_uploader():
 
         elif this_snap["stowStatus"] == "SYNCHRONIZED":
             # we should only ever get here when replaying the log and this one was already in progress
-            log.info(f"upload of {snap.fsname}/{snap.snapname} was already complete. Logging it as such")
+            log.error(f"upload of {snap.fsname}/{snap.snapname} was already complete. Logging it as such")
             intent_log.info(f"{snap.uuid}:{fsname}:{snapname}:complete")
 
         # otherwise, it should be uploading, so we fall through and monitor it
@@ -209,7 +209,7 @@ def upload_intent_iter():
         sorted_snaps[snapshot['status']][uuid] = snapshot
 
     log.debug(f"sorted_snaps = {sorted_snaps}")
-    log.info(f"There are {len(sorted_snaps['error'])} error snaps, {len(sorted_snaps['uploading'])} uploading snaps, and {len(sorted_snaps['queued'])} queued snaps in the intent log")
+    log.debug(f"There are {len(sorted_snaps['error'])} error snaps, {len(sorted_snaps['uploading'])} uploading snaps, and {len(sorted_snaps['queued'])} queued snaps in the intent log")
 
     # process in order of status
     for status in ["uploading", "error", "queued"]:     # not sure about error ones... do we re-queue?  Should only be 1 uploading too
