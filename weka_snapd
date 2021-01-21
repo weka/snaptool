@@ -258,10 +258,9 @@ if __name__ == '__main__':
             # got one of ours, record it
             if fsname not in our_snaps:
                 our_snaps[fsname] = []
-            logger.debug(f"old snap {snapname} recorded")
             our_snaps[fsname].append(snapname)
 
-        logger.debug(f"{our_snaps}")
+        #logger.debug(f"{our_snaps}")
 
         # now delete from the list any old snaps
         for fsname, next_snap in next_foreach[next_snaptime].items():   # current list of snaps that have been taken
