@@ -194,7 +194,7 @@ def background_uploader():
                 continue    # skip the rest for this one
             
             # log that it's been told to upload
-            log.error(f"uploading snapshot {snap.fsname}/{snap.snapname}")
+            log.info(f"uploading snapshot {snap.fsname}/{snap.snapname}")
             intent_log.put_record(snap.uuid, fsname, snapname, "uploading")
 
         elif this_snap["stowStatus"] == "SYNCHRONIZED":
