@@ -55,7 +55,7 @@ class UploadSnapshot():
         else:
             self.uuid = uuid
         if fsname != "WEKA_TERMINATE_THREAD" and snapname != "WEKA_TERMINATE_THREAD":
-            intent_log.info(f"{self.uuid}:{fsname}:{snapname}:queued")
+            intent_log.critical(f"{self.uuid}:{fsname}:{snapname}:queued")
         # queue the request
         uploadq.put(self)
 
@@ -109,7 +109,7 @@ def background_uploader():
         if len(snap_stat) == 0:
             # hmm... this one doesn't exist on the cluster?
             log.error(f"{snap.fsname}/{snap.snapname} doesn't exist! Did creation fail?  Logging as complete...")
-            intent_log.info(f"{snap.uuid}:{fsname}:{snapname}:complete")
+            intent_log.critical(f"{snap.uuid}:{fsname}:{snapname}:complete")
             continue
         else:
             log.debug(f"snap_stat is {snap_stat}")
@@ -121,16 +121,16 @@ def background_uploader():
                 snapshots = cluster_obj.call_api(method="snapshot_upload",parms={'file_system': snap.fsname, 'snapshot': snap.snapname})
             except Exception as exc:
                 log.error(f"error uploading snapshot {snap.fsname}/{snap.snapname}: {exc}")
-                intent_log.info(f"{snap.uuid}:{fsname}:{snapname}:error")
+                intent_log.critical(f"{snap.uuid}:{fsname}:{snapname}:error")
                 continue    # skip the rest for this one
             
             # log that it's been told to upload
-            intent_log.info(f"{snap.uuid}:{fsname}:{snapname}:uploading")
+            intent_log.critical(f"{snap.uuid}:{fsname}:{snapname}:uploading")
 
         elif this_snap["stowStatus"] == "SYNCHRONIZED":
             # we should only ever get here when replaying the log and this one was already in progress
             log.error(f"upload of {snap.fsname}/{snap.snapname} was already complete. Logging it as such")
-            intent_log.info(f"{snap.uuid}:{fsname}:{snapname}:complete")
+            intent_log.critical(f"{snap.uuid}:{fsname}:{snapname}:complete")
 
         # otherwise, it should be uploading, so we fall through and monitor it
 
@@ -150,7 +150,7 @@ def background_uploader():
                     continue
                 elif this_snap["stowStatus"] == "SYNCHRONIZED":
                     log.info(f"upload of {snap.fsname}/{snap.snapname} complete.")
-                    intent_log.info(f"{snap.uuid}:{fsname}:{snapname}:complete")
+                    intent_log.critical(f"{snap.uuid}:{fsname}:{snapname}:complete")
                     upload_complete = True
                     continue
                 else:

@@ -25,9 +25,10 @@ schedules:
       time: 1900
       upload: false
     hourly:
-      retain: 24
+      retain: 0
       start_day: 0
       start_time: 800
       stop_day: 5
       stop_time: 2100
+      snap_minute: 0
       upload: false
