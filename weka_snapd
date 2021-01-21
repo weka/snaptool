@@ -258,7 +258,7 @@ if __name__ == '__main__':
             # got one of ours, record it
             if fsname not in sorted_snaps:
                 sorted_snaps[fsname] = []
-            logger.debug("old snap {snapname} recorded")
+            logger.debug(f"old snap {snapname} recorded")
             sorted_snaps[fsname].append(snapname)
 
         # now delete from the list any old snaps
