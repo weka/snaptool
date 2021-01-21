@@ -266,7 +266,7 @@ if __name__ == '__main__':
             logger.error(f"Error collecting snapshot list: {exc}")
             sys.exit(1)
 
-        log.debug("checking if old snaps need to be removed")
+        logger.debug("checking if old snaps need to be removed")
         sorted_snaps = {}
         for snapshot in snapshots:
             fsname = snapshot["filesystem"]
