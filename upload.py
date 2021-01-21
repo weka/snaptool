@@ -23,11 +23,6 @@ from threading import Lock
 
 log = getLogger(__name__)
 
-#upload_intent_log = logging.getLogger("upload_intent_log")
-#upload_intent_handler = logging.handlers.RotatingFileHandler("upload_intent.log",maxBytes=1024*1024, backupCount=1)
-#upload_intent_handler.setFormatter(logging.Formatter("%(message)s"))
-#upload_intent_log.addHandler(upload_intent_handler)
-
 class IntentLog():
     def __init__(self, logfilename):
         self._lock = Lock()
@@ -119,7 +114,7 @@ def unique_id(alphabet='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRST
 class UploadSnapshot():
     def __init__(self, cluster, fsname, snapname, uuid=None):
         global uploadq
-        intent_log = logging.getLogger("upload_intent_log")
+        global intent_log
         self.fsname = fsname
         self.snapname = snapname
         self.cluster_obj = cluster
@@ -144,8 +139,8 @@ class UploadSnapshot():
 # uploads snapshots in the background - runs in a thread - starts before replaying log
 def background_uploader():
     global uploadq
+    global intent_log
     log.info("background_uploader starting...")
-    intent_log = logging.getLogger("upload_intent_log")
 
     main_thread = threading.main_thread()
 
