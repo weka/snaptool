@@ -277,7 +277,7 @@ if __name__ == '__main__':
                     if temp_list[0] == next_snap.name:
                         snap_list.append(snapname)
 
-                    delete_list = sorted(snap_list)[next_snap.retain:]
+                    delete_list = sorted(snap_list,reverse=True)[next_snap.retain:]
                     logger.debug(f"delete_list = {delete_list}")
                     for snap in delete_list:
                         logger.info(f"snap {fsname}/{snap} being deleted")
