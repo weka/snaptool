@@ -15,7 +15,7 @@ import os
 import sys
 import time
 import traceback
-from multiprocessing import Process
+#from multiprocessing import Process
 import threading
 import json
 import yaml
@@ -26,7 +26,7 @@ import queue
 from wekacluster import WekaCluster
 import signals
 from snapshots import SnapSchedule, MonthlySchedule, WeeklySchedule, DailySchedule, HourlySchedule
-from upload import UploadSnapshot, replay_upload_intent_log
+from upload import UploadSnapshot, intent_log
 
 def snapd_call_api(cluster, method, parms):
     stopit = False
@@ -173,7 +173,7 @@ if __name__ == '__main__':
     filesystems = config["filesystems"]
 
     logger.warning("Replaying intent log")
-    replay_upload_intent_log(cluster_obj)
+    intent_log.replay(cluster_obj)
 
 
     while True:
