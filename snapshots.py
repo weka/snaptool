@@ -17,8 +17,10 @@ class SnapSchedule():
     def next_snap(self, now):
         if self.nextsnap == None or now > self.nextsnap.nextsnap_dt:     
             # self.nextsnap is old, update it
+            log.debug(f"updating snaptime")
             earliest = None
             for sched in self.schedule:
+                # if retain is 0, it means we're not taking any snaps
                 if sched.retain > 0:
                     log.debug(f"sched = {sched}, earliest = {earliest}")
                     if earliest == None:
@@ -159,57 +161,58 @@ class HourlySchedule(BaseSchedule):
     def next_snaptime(self, now):
         log.debug(f"now is {now.isoformat()}")
         if now > self.nextsnap_dt:     
-                now_weekday = now.weekday()
-                log.debug(f"(hourly) now_weekday = {now_weekday}, self.start_day = {self.start_day}, self.stop_day = {self.stop_day}")
+            log.debug(f"Recalculating next snaptime")
+            now_weekday = now.weekday()
+            log.debug(f"(hourly) now_weekday = {now_weekday}, self.start_day = {self.start_day}, self.stop_day = {self.stop_day}")
 
-                #start_dt = datetime.datetime(now.year, now.month, now.day, self.start_hour, self.snap_minute)
-                if now_weekday >= self.start_day and now_weekday <= self.stop_day:
-                    # we're within the days they want snaps
-                    start_dt = datetime.datetime(now.year, now.month, now.day, self.start_hour, self.snap_minute)
-                    stop_dt = datetime.datetime(now.year, now.month, now.day, self.stop_hour, self.snap_minute)
-                    log.debug(f"start_dt = {start_dt}, stop_dt = {stop_dt}")
-                    if now > start_dt and now < stop_dt:
-                        log.debug(f"within hours, now.minute={now.minute}, self.snap_minute={self.snap_minute}")
-                        # we're within the hours they want snaps
-                        if now.minute <= self.snap_minute:
-                            # upcoming this hour
-                            self.nextsnap_dt = datetime.datetime(now.year, now.month, now.day, now.hour, self.snap_minute)
-                        else:
-                            # try to sched for next hour
-                            temp_date = now + datetime.timedelta(hours=1)
-                            temp_date2 = datetime.datetime(temp_date.year, temp_date.month, temp_date.day, temp_date.hour, self.snap_minute)
-                            log.debug(f"temp_date2 = {temp_date2}, stop_dt = {stop_dt}")
-                            if temp_date2 <= stop_dt:
-                                self.nextsnap_dt = temp_date2
-                            else:
-                                log.debug("outside hours after bump")
-                                tomorrow = now + datetime.timedelta(days=1)
-                                temp_date2 = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0,0) # midnight tonight
-                                return self.next_snaptime(temp_date2) # recurse - it'll figure it out if we're outside days
+            #start_dt = datetime.datetime(now.year, now.month, now.day, self.start_hour, self.snap_minute)
+            if now_weekday >= self.start_day and now_weekday <= self.stop_day:
+                # we're within the days they want snaps
+                start_dt = datetime.datetime(now.year, now.month, now.day, self.start_hour, self.snap_minute) # datetime of first snap today
+                stop_dt = datetime.datetime(now.year, now.month, now.day, self.stop_hour, self.snap_minute)   # datetime of last snap today
+                log.debug(f"start_dt = {start_dt}, stop_dt = {stop_dt}")
+                if now > start_dt and now < stop_dt:
+                    log.debug(f"within hours, now.minute={now.minute}, self.snap_minute={self.snap_minute}")
+                    # we're within the hours they want snaps
+                    if now.minute < self.snap_minute:
+                        # upcoming this hour
+                        self.nextsnap_dt = datetime.datetime(now.year, now.month, now.day, now.hour, self.snap_minute)
                     else:
-                        # we're within the days, but outside of hours
-                        if now < start_dt:
-                            log.debug(f"before hours")
-                            self.nextsnap_dt = start_dt
-                        elif now > start_dt:
-                            # after hours - bump forward to next day
-                            log.debug(f"after hours")
+                        # try to sched for next hour
+                        temp_date = now + datetime.timedelta(hours=1)
+                        temp_date2 = datetime.datetime(temp_date.year, temp_date.month, temp_date.day, temp_date.hour, self.snap_minute)
+                        log.debug(f"temp_date2 = {temp_date2}, stop_dt = {stop_dt}")
+                        if temp_date2 <= stop_dt:
+                            self.nextsnap_dt = temp_date2
+                        else:
+                            log.debug("outside hours after bump")
                             tomorrow = now + datetime.timedelta(days=1)
                             temp_date2 = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0,0) # midnight tonight
                             return self.next_snaptime(temp_date2) # recurse - it'll figure it out if we're outside days
-                        else:
-                            self.nextsnap_dt = start_dt
-                            return self.nextsnap_dt
                 else:
-                    # we're outside the days specified, go forward to next week
-                    log.debug(f"outside days")
-                    day_delta = 7 + self.start_day - now_weekday
-                    if day_delta > 7:
-                        # it's later this week, not next week
-                        day_delta -= 7
-                    temp_date = now + datetime.timedelta(days=day_delta)
-                    target_datetime = datetime.datetime(temp_date.year, temp_date.month, temp_date.day, self.start_hour, self.snap_minute)
-                    self.nextsnap_dt = target_datetime
+                    # we're within the days, but outside of hours
+                    if now < start_dt:
+                        log.debug(f"before hours")
+                        self.nextsnap_dt = start_dt
+                    elif now > start_dt:
+                        # after hours - bump forward to next day
+                        log.debug(f"after hours")
+                        tomorrow = now + datetime.timedelta(days=1)
+                        temp_date2 = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0,0) # midnight tonight
+                        return self.next_snaptime(temp_date2) # recurse - it'll figure it out if we're outside days
+                    else:
+                        self.nextsnap_dt = start_dt
+                        return self.nextsnap_dt
+            else:
+                # we're outside the days specified, go forward to next week
+                log.debug(f"outside days")
+                day_delta = 7 + self.start_day - now_weekday
+                if day_delta > 7:
+                    # it's later this week, not next week
+                    day_delta -= 7
+                temp_date = now + datetime.timedelta(days=day_delta)
+                target_datetime = datetime.datetime(temp_date.year, temp_date.month, temp_date.day, self.start_hour, self.snap_minute)
+                self.nextsnap_dt = target_datetime
 
         return self.nextsnap_dt
 
