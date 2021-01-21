@@ -261,18 +261,19 @@ if __name__ == '__main__':
 
         # go get a list of existing snaps in the cluster - we'll need these later if we need to delete some
         try:
-            #snapshots = cluster_obj.call_api(method="snapshots_list",parms={})
             snapshots = snapd_call_api(cluster_obj, method="snapshots_list",parms={})
         except Exception as exc:
             logger.error(f"Error collecting snapshot list: {exc}")
             sys.exit(1)
 
+        log.debug("checking if old snaps need to be removed")
         sorted_snaps = {}
         for snapshot in snapshots:
             fsname = snapshot["filesystem"]
             snapname = snapshot["name"]
             # make sure it's one of ours, not one made by the customer
             snap_list = snapname.split('.')
+            logger.debug(f"looking at snap {fsname}/{snapname}")
             if len(snap_list) != 2:     #first hint - schedule.time is the format; must be 2 here 
                 continue
             if snap_list[0] not in ["monthly","weekly","daily","hourly"]:    # ours start with the schedule name
@@ -281,15 +282,15 @@ if __name__ == '__main__':
             # got one of ours, record it
             if fsname not in sorted_snaps:
                 sorted_snaps[fsname] = []
+            logger.debug("old snap {snapname} recorded")
             sorted_snaps[fsname].append(snapname)
 
         # delete old snaps
         for fsname, next_snap in next_foreach[next_snaptime].items():   # current list of snaps that have been taken
-            if fsname in sorted_snaps:
-                logger.debug(f"fs {fsname} should keep {next_snap.retain} {next_snap.name} snaps, and currently has {len(sorted_snaps[fsname])} of them")
             # make a list of this schedule's snaps...
             snap_list = []
             if fsname in sorted_snaps:
+                logger.debug(f"fs {fsname} should keep {next_snap.retain} {next_snap.name} snaps, and currently has {len(sorted_snaps[fsname])} of them")
                 fs_snaps = sorted_snaps[fsname]
                 for snapname in fs_snaps:
                     temp_list = snapname.split('.')
