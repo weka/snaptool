@@ -46,6 +46,10 @@ Note that we are unable to distinguish between user-created and snapshot manager
 
 The weka_snapd takes a "cluster spec" as a required argument.  This is a comma-separated list of weka hosts (ip addrs or names) with an optional :authfile.   The auth file comes from the "weka user login" command, is generally in the ~/.weka directory, and contains authorization tokens so that the weka_snapd program can communicate with the weka cluster.
 
+An example "cluster spec" would be:
+
+    weka1,weka2,weka3:~/.weka/auth-file.json
+
 An optional verbosity can also be specified with the -v parameter.   Adding more than one "v" increases verbosity level (ie: "-vvv").
 
 
