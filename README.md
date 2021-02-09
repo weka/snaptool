@@ -1,4 +1,4 @@
-# snap_manager
+# snaptool
 Weka Cluster Snaphot Manager
 
 
@@ -6,7 +6,7 @@ A solution that implements snapshot management for Weka Clusters
 
 # Use Overview:  
 
-snap_manager consists of a daemon that manages snapshots
+snaptool consists of a daemon that manages snapshots
 
 # Features
 
@@ -24,7 +24,7 @@ A default snapshot schedule is automatically defined with the following paramete
 
 # Configuration
 
-The user may define a custom Schedule in the YAML configuration file, weka_snapd.yml
+The user may define a custom Schedule in the YAML configuration file, snaptool.yml
 
 Filesystems are listed in the YAML file, and define which Schedule they will use there.
 
@@ -44,7 +44,7 @@ Note that we are unable to distinguish between user-created and snapshot manager
 
 # Command-line Arguments
 
-The weka_snapd takes a "cluster spec" as a required argument.  This is a comma-separated list of weka hosts (ip addrs or names) with an optional :authfile.   The auth file comes from the "weka user login" command, is generally in the ~/.weka directory, and contains authorization tokens so that the weka_snapd program can communicate with the weka cluster.
+The snaptool takes a "cluster spec" as a required argument.  This is a comma-separated list of weka hosts (ip addrs or names) with an optional :authfile.   The auth file comes from the "weka user login" command, is generally in the ~/.weka directory, and contains authorization tokens so that the snaptool program can communicate with the weka cluster.
 
 An example "cluster spec" would be:
 
@@ -52,5 +52,6 @@ An example "cluster spec" would be:
 
 An optional verbosity can also be specified with the -v parameter.   Adding more than one "v" increases verbosity level (ie: "-vvv").
 
+# Running in Docker
 
-
+docker run -d -v /dev/log:/dev/log wekasolutions/snaptool -vvv ip-172-31-13-179,ip-172-31-12-28,ip-172-31-1-140

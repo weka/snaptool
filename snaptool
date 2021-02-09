@@ -4,7 +4,7 @@
 # Vince Fleming
 # vince@weka.io
 #
-VERSION="0.8.0"
+VERSION="0.9.0"
 
 # system imports
 import logging
@@ -23,8 +23,8 @@ import datetime
 from urllib3 import add_stderr_logger
 import queue
 
-from wekacluster import WekaCluster
-import signals
+from wekalib.wekacluster import WekaCluster
+import wekalib.signals as signals
 from snapshots import SnapSchedule, MonthlySchedule, WeeklySchedule, DailySchedule, HourlySchedule
 from upload import UploadSnapshot, intent_log
 
@@ -51,7 +51,7 @@ if __name__ == '__main__':
     signals.signal_handling()
 
     parser = argparse.ArgumentParser(description="Weka Snapshot Management Daemon")
-    parser.add_argument("-c", "--configfile", dest='configfile', default="./weka_snapd.yml", help="override ./weka_snapd.yml as config file")
+    parser.add_argument("-c", "--configfile", dest='configfile', default="./snaptool.yml", help="override ./snaptool.yml as config file")
     parser.add_argument("-p", "--port", dest='port', default="13999", help="TCP port number to listen on")
     parser.add_argument( 'clusterspec', default="localhost", help="Cluster specification.  <host>,<host>,...:authfile" )
     parser.add_argument("-v", "--verbosity", action="count", default=0, help="increase output verbosity")

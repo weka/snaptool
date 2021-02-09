@@ -12,22 +12,18 @@ RUN mkdir -p $BASEDIR
 
 WORKDIR $BASEDIR
 
-COPY weka_snapd $BASEDIR
-COPY weka_snapd.yml $BASEDIR
+COPY snaptool $BASEDIR
+COPY snaptool.yml $BASEDIR
 COPY snapshots.py $BASEDIR
-COPY collector.py $BASEDIR
-COPY circular.py $BASEDIR
-COPY signals.py $BASEDIR
-COPY sthreads.py $BASEDIR
-COPY wekaapi.py $BASEDIR
-COPY wekacluster.py $BASEDIR
-COPY wekatime.py $BASEDIR
+COPY upload.py $BASEDIR
+RUN mkdir $BASEDIR/wekalib
+COPY wekalib/* $BASEDIR/wekalib/
 
 RUN addgroup -S -g $ID $USER &&\
     adduser -S -h $BASEDIR -u $ID -G $USER $USER && \
     chown -R $USER:$USER $BASEDIR
 
-RUN chmod +x $BASEDIR/weka_snapd
+RUN chmod +x $BASEDIR/snaptool
 
 USER $USER
-ENTRYPOINT ["./weka_snapd"]
+ENTRYPOINT ["./snaptool"]

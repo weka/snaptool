@@ -1,1 +1,1 @@
-docker build --tag wekasolutions/export .
+docker build --tag wekasolutions/snaptool .

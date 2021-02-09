@@ -62,7 +62,7 @@ class IntentLog():
                             temp = record.split(':')
                             yield temp[0], temp[1], temp[2], temp[3][:-1]
                 except FileNotFoundError:
-                    log.info(f"Log file {logfile} not found")
+                    log.info(f"Log file {self.filename} not found")
                     continue
 
     # un-completed records - an iterable
