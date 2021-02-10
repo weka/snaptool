@@ -51,6 +51,7 @@ if __name__ == '__main__':
     signals.signal_handling()
 
     parser = argparse.ArgumentParser(description="Weka Snapshot Management Daemon")
+    parser.add_argument("-w", "--windowsformat", dest='winformat', default=False, action='store_true', help="Name snapshots in a windows-compatible format")
     parser.add_argument("-c", "--configfile", dest='configfile', default="./snaptool.yml", help="override ./snaptool.yml as config file")
     parser.add_argument("-p", "--port", dest='port', default="13999", help="TCP port number to listen on")
     parser.add_argument( 'clusterspec', default="localhost", help="Cluster specification.  <host>,<host>,...:authfile" )
@@ -211,7 +212,11 @@ if __name__ == '__main__':
 
         # Create Snaps
         for fsname, next_snap in next_foreach[next_snaptime].items():   # current list of snaps that need to be taken
-            next_snapname = next_snap.name + "." + next_snap.next_snaptime(now).strftime("%Y-%m-%d_%H%M")
+            if args.winformat:
+                utc_next_snaptime = next_snap.next_snaptime(now).astimezone(pytz.utc)
+                next_snapname = utc_next_snaptime.strftime("GMT-%Y.%m.%d-%H.%M.%S")
+            else:
+                next_snapname = next_snap.name + "." + next_snap.next_snaptime(now).strftime("%Y-%m-%d_%H%M")
             logger.debug(f"Next snapname is {next_snapname}")
 
             # create a snap
