@@ -59,6 +59,7 @@ class MonthlySchedule(BaseSchedule):
         self.minute = int(time - (self.hour *100))
         self.retain = retain
         self.upload = upload
+        if self.date == 0: self.date = 1    # just in case
         BaseSchedule.__init__(self, "monthly")
 
     def next_snaptime(self, now):
@@ -144,7 +145,7 @@ class DailySchedule(BaseSchedule):
 
 class HourlySchedule(BaseSchedule):
     # default is mon-fri, 9-5, top of hour
-    def __init__(self, start_day=0, stop_day=4, start_time=900, stop_time=1700, snap_minute=0, retain=10, upload=False):    # snap_minute == mins past the hour to snap
+    def __init__(self, start_day=0, stop_day=4, start_time=900, stop_time=1700, snap_minute=0, name_format="standard", retain=10, upload=False):    # snap_minute == mins past the hour to snap
         self.start_day = start_day
         self.stop_day = stop_day
         self.start_time = start_time
@@ -154,6 +155,7 @@ class HourlySchedule(BaseSchedule):
         self.stop_hour = int(stop_time/100)
         self.stop_minute = int(stop_time - (self.stop_hour *100))
         self.snap_minute = snap_minute
+        self.name_format = name_format
         self.retain = retain
         self.upload = upload
         BaseSchedule.__init__(self, 'hourly')
