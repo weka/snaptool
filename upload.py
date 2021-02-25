@@ -6,34 +6,34 @@
 #
 
 # system imports
-import logging
-import logging.handlers
-from logging import debug, info, warning, error, critical, getLogger
+import os
+# import datetime
+# from urllib3 import add_stderr_logger
+import queue
+import threading
 import time
 import uuid
-import threading
-#import datetime
-#from urllib3 import add_stderr_logger
-import queue
+from logging import getLogger
 from threading import Lock
 
-#from wekacluster import WekaCluster
-#import signals
-#from snapshots import SnapSchedule, MonthlySchedule, WeeklySchedule, DailySchedule, HourlySchedule
+# from wekacluster import WekaCluster
+# import signals
+# from snapshots import SnapSchedule, MonthlySchedule, WeeklySchedule, DailySchedule, HourlySchedule
 
 log = getLogger(__name__)
 
-class IntentLog():
+
+class IntentLog:
     def __init__(self, logfilename):
         self._lock = Lock()
         self.filename = logfilename
 
-    def rotate(self):   # only rotate if needed
+    def rotate(self):  # only rotate if needed
         with self._lock:
             file_stat = os.stat(self.filename)
             filesize = file_stat.st_size
 
-            if filesize > 1024*1024:
+            if filesize > 1024 * 1024:
                 # move file to .1
                 if os.path.exists(self.filename + '.1'):
                     os.remove(self.filename + '.1')
@@ -57,12 +57,12 @@ class IntentLog():
         with self._lock:
             for filename in [self.filename + '.1', self.filename]:
                 try:
-                    with open(self.filename, "r") as fd:
+                    with open(filename, "r") as fd:
                         for record in fd:
                             temp = record.split(':')
                             yield temp[0], temp[1], temp[2], temp[3][:-1]
                 except FileNotFoundError:
-                    log.info(f"Log file {self.filename} not found")
+                    log.info(f"Log file {filename} not found")
                     continue
 
     # un-completed records - an iterable
@@ -76,27 +76,30 @@ class IntentLog():
                 snaps[uuid]['snapname'] = snapname
                 snaps[uuid]['status'] = status
             else:
-                #log.debug(f"status is '{status}'")
+                # log.debug(f"status is '{status}'")
                 if status == "complete":
                     log.debug(f"Deleting complete snap {uuid}")
-                    del snaps[uuid]     # remove ones that completed so we don't need to look through them
+                    del snaps[uuid]  # remove ones that completed so we don't need to look through them
                 else:
                     log.debug(f"Updating status of snap {uuid} to {status}")
-                    snaps[uuid]['status'] = status    # update status
+                    snaps[uuid]['status'] = status  # update status
 
-        log.debug(f"snaps = {snaps}")   # this should be a very short list - far less than 100; likely under 5
+        log.debug(f"snaps = {snaps}")  # this should be a very short list - far less than 100; likely under 5
 
-        sorted_snaps = {"queued":{}, "uploading":{}, "error":{}}
+        sorted_snaps = {"queued": {}, "uploading": {}, "error": {}}
 
-        for uuid, snapshot in snaps.items():      # sort so we can see uploading and error first
+        for uuid, snapshot in snaps.items():  # sort so we can see uploading and error first
             log.debug(f"uuid={uuid}, snapshot={snapshot}")
             sorted_snaps[snapshot['status']][uuid] = snapshot
 
         log.debug(f"sorted_snaps = {sorted_snaps}")
-        log.debug(f"There are {len(sorted_snaps['error'])} error snaps, {len(sorted_snaps['uploading'])} uploading snaps, and {len(sorted_snaps['queued'])} queued snaps in the intent log")
+        log.debug(
+            f"There are {len(sorted_snaps['error'])} error snaps, {len(sorted_snaps['uploading'])} uploading" +
+            "snaps, and {len(sorted_snaps['queued'])} queued snaps in the intent log")
 
         # process in order of status
-        for status in ["uploading", "error", "queued"]:     # not sure about error ones... do we re-queue?  Should only be 1 uploading too
+        for status in ["uploading", "error",
+                       "queued"]:  # not sure about error ones... do we re-queue?  Should only be 1 uploading too
             for uuid, snapshot in sorted_snaps[status].items():
                 # these should be re-queued because they didn't finish
                 log.debug(f"re-queueing snapshot = {snapshot}, status={status}")
@@ -111,15 +114,16 @@ def unique_id(alphabet='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRST
         result = alphabet[i] + result
     return result
 
-class UploadSnapshot():
+
+class UploadSnapshot:
     def __init__(self, cluster, fsname, snapname, uuid=None):
         global uploadq
         global intent_log
         self.fsname = fsname
         self.snapname = snapname
         self.cluster_obj = cluster
-       
-        if uuid == None:
+
+        if uuid is None:
             self.uuid = unique_id()
         else:
             self.uuid = uuid
@@ -130,7 +134,7 @@ class UploadSnapshot():
 
 
 # starts the background uploader
-#def start_uploader():
+# def start_uploader():
 #    upload_thread = threading.Thread(target=background_uploader)
 #    upload_thread.start()
 #    log.info(f"upload_thread = {upload_thread}")
@@ -148,12 +152,12 @@ def background_uploader():
         # take item off queue
         try:
             # don't block forever so we can keep an eye on the main thread
-            #log.debug(f"Getting from queue")
-            snap = uploadq.get(block=True, timeout=10)    # block for 10s
+            # log.debug(f"Getting from queue")
+            snap = uploadq.get(block=True, timeout=10)  # block for 10s
         except queue.Empty:
-            #log.debug(f"Queue get timed out; nothing in queue.")
+            # log.debug(f"Queue get timed out; nothing in queue.")
             if main_thread.is_alive():
-                #log.debug(f"Main thread is alive")
+                # log.debug(f"Main thread is alive")
                 continue
             else:
                 log.debug(f"Main thread is dead, exiting uploader thread")
@@ -171,9 +175,11 @@ def background_uploader():
 
         # get snap info via api
         try:
-            snap_stat = cluster_obj.call_api(method="snapshots_list",parms={'file_system': snap.fsname, 'name': snap.snapname})
+            snap_stat = cluster_obj.call_api(method="snapshots_list",
+                                             parms={'file_system': snap.fsname, 'name': snap.snapname})
         except Exception as exc:
             log.error(f"error listing snapshots: checking status: {exc}")
+            continue
 
         if len(snap_stat) == 0:
             # hmm... this one doesn't exist on the cluster?
@@ -187,13 +193,15 @@ def background_uploader():
         if this_snap["stowStatus"] == "NONE":
             # Hasn't been uploaded yet; Try to upload the snap via API
             try:
-                snapshots = cluster_obj.call_api(method="snapshot_upload",parms={'file_system': snap.fsname, 'snapshot': snap.snapname})
+                snapshots = cluster_obj.call_api(method="snapshot_upload",
+                                                 parms={'file_system': snap.fsname, 'snapshot': snap.snapname})
             except Exception as exc:
                 log.error(f"error uploading snapshot {snap.fsname}/{snap.snapname}: {exc}")
                 intent_log.put_record(snap.uuid, fsname, snapname, "error")
-                continue    # skip the rest for this one
-            
+                continue  # skip the rest for this one
+
             # log that it's been told to upload
+            # ***vince - check the return to make sure it's been told to upload
             log.info(f"uploading snapshot {snap.fsname}/{snap.snapname}")
             intent_log.put_record(snap.uuid, fsname, snapname, "uploading")
 
@@ -210,13 +218,15 @@ def background_uploader():
             time.sleep(10)  # give it some time to upload, check in every 10s
             # get snap info via api
             try:
-                snap_stat = cluster_obj.call_api(method="snapshots_list",parms={'file_system': snap.fsname, 'name': snap.snapname})
+                snap_stat = cluster_obj.call_api(method="snapshots_list",
+                                                 parms={'file_system': snap.fsname, 'name': snap.snapname})
             except Exception as exc:
                 log.error(f"error listing snapshots: checking status: {exc}")
             if len(snap_stat) > 0:
                 this_snap = snap_stat[0]
                 if this_snap["stowStatus"] == "UPLOADING":
-                    log.debug(f"upload of {snap.fsname}/{snap.snapname} in progress: {this_snap['objectProgress']} complete")
+                    log.debug(
+                        f"upload of {snap.fsname}/{snap.snapname} in progress: {this_snap['objectProgress']} complete")
                     continue
                 elif this_snap["stowStatus"] == "SYNCHRONIZED":
                     log.info(f"upload of {snap.fsname}/{snap.snapname} complete.")
@@ -224,11 +234,14 @@ def background_uploader():
                     upload_complete = True
                     continue
                 else:
-                    log.error(f"upload status of {snap.fsname}/{snap.snapname} is {this_snap['stowStatus']}/{this_snap['objectProgress']}?")
+                    log.error(
+                        f"upload status of {snap.fsname}/{snap.snapname} is {this_snap['stowStatus']}/" +
+                        "{this_snap['objectProgress']}?")
                     continue
             else:
                 log.error(f"no snap status for {snap.fsname}/{snap.snapname}?")
                 continue
+
 
 # module init
 # upload queue for queuing object uploads
