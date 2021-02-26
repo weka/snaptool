@@ -128,10 +128,10 @@ if __name__ == '__main__':
         logger.addHandler(syslog_handler)
     logger.addHandler(console_handler)
 
-    logging.getLogger("wekacluster").setLevel(logging.ERROR)
-    logging.getLogger("wekaapi").setLevel(logging.ERROR)
-    logging.getLogger("sthreads").setLevel(logging.ERROR)
-    logging.getLogger("circular").setLevel(logging.ERROR)
+    logging.getLogger("wekalib.wekacluster").setLevel(logging.ERROR)
+    logging.getLogger("wekalib.wekaapi").setLevel(logging.ERROR)
+    logging.getLogger("wekalib.sthreads").setLevel(logging.ERROR)
+    logging.getLogger("wekalib.circular").setLevel(logging.ERROR)
     logging.getLogger("snapshots").setLevel(logging.INFO)
     logging.getLogger("upload").setLevel(logging.INFO)
 
@@ -259,9 +259,8 @@ if __name__ == '__main__':
 
             if next_snap_time not in next_foreach:
                 next_foreach[next_snap_time] = {}
-            next_foreach[next_snap_time][
-                fsname] = next_snap  # build a dict so we can sort by snaptime; each "time" is a list of fs's
-            logger.error(f"type(next_snap)={type(next_snap)}")
+            # build a dict so we can sort by snaptime; each "time" is a list of fs's
+            next_foreach[next_snap_time][fsname] = next_snap
 
         logger.debug(
             f"next_foreach[next_snap_time] = {next_foreach[next_snap_time]}, next snap_time = {next_snap_time}")
