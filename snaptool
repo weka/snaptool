@@ -20,43 +20,44 @@ from urllib3 import add_stderr_logger
 
 import wekalib.signals as signals
 from snapshots import SnapSchedule, MonthlySchedule, WeeklySchedule, DailySchedule, HourlySchedule
+import snapshots
 from upload import UploadSnapshot, intent_log
 from wekalib.wekacluster import WekaCluster
 
 VERSION = "0.9.1"
 
-
 config_file_format = {
-        'monthly': {
-            'date': int,
-            'time':int,
-            'retain':int,
-            'upload':bool
-            },
-        'weekly': {
-            'weekday':int,
-            'time':int,
-            'retain':int,
-            'upload': bool
-            },
-        'daily': {
-            'start_day':int,
-            'stop_day':int,
-            'time':int,
-            'retain':int,
-            'upload':bool
-            },
-        'hourly': {
-            'start_day':int,
-            'stop_day':int,
-            'start_time':int,
-            'stop_time':int,
-            'snap_minute':int,
-            'name_format':str,
-            'retain':int,
-            'upload':bool
-            }
-        }
+    'monthly': {
+        'date': int,
+        'time': int,
+        'retain': int,
+        'upload': bool
+    },
+    'weekly': {
+        'weekday': int,
+        'time': int,
+        'retain': int,
+        'upload': bool
+    },
+    'daily': {
+        'start_day': int,
+        'stop_day': int,
+        'time': int,
+        'retain': int,
+        'upload': bool
+    },
+    'hourly': {
+        'start_day': int,
+        'stop_day': int,
+        'start_time': int,
+        'stop_time': int,
+        'snap_minute': int,
+        'name_format': str,
+        'retain': int,
+        'upload': bool
+    }
+}
+
 
 def snapd_call_api(cluster, method, parms):
     stopit = False
@@ -125,7 +126,6 @@ if __name__ == '__main__':
 
     # add handlers to root logger
     if syslog_handler is not None:
-
         logger.addHandler(syslog_handler)
     logger.addHandler(console_handler)
 
@@ -179,20 +179,24 @@ if __name__ == '__main__':
         errors = True
     for fs, fsspec in config['filesystems'].items():
         if 'schedule' not in fsspec or len(fsspec) != 1:
-            logging.error(f"Syntax Error in config file ({args.configfile}): Invalid schedule specification for filesystem {fs}")
+            logging.error(
+                f"Syntax Error in config file ({args.configfile}): Invalid schedule specification for filesystem {fs}")
             errors = True
     if 'schedules' in config:
-        for schedname, schedspec in config['schedules'].items():   # for each custom schedule...
+        for schedname, schedspec in config['schedules'].items():  # for each custom schedule...
             for key, spec in schedspec.items():
                 if key not in config_file_format:
-                    logging.error(f"Syntax Error in config file ({args.configfile}): custom schedule {schedname} has unknown key '{key}'")
+                    logging.error(
+                        f"Syntax Error in config file ({args.configfile}): custom schedule {schedname} has unknown key '{key}'")
                     errors = True
                 for name, setting in spec.items():
                     if name not in config_file_format[key].keys():
-                        logging.error(f"Syntax Error in config file ({args.configfile}): custom schedule {schedname}:{key} has unknown keyword '{name}'")
+                        logging.error(
+                            f"Syntax Error in config file ({args.configfile}): custom schedule {schedname}:{key} has unknown keyword '{name}'")
                         errors = True
                     if type(setting) != config_file_format[key][name]:
-                        logging.error(f"Syntax Error in config file ({args.configfile}): custom schedule {schedname}:{key} has invalid value {setting}")
+                        logging.error(
+                            f"Syntax Error in config file ({args.configfile}): custom schedule {schedname}:{key} has invalid value {setting}")
                         errors = True
 
     if errors:
@@ -201,12 +205,12 @@ if __name__ == '__main__':
 
     # fill in any missing items in the config
     if 'schedules' in config:
-        for schedname, schedspec in config['schedules'].items():   # for each custom schedule...
+        for schedname, schedspec in config['schedules'].items():  # for each custom schedule...
             for key in config_file_format:
-                if key not in schedspec: # ['monthly','weekly','daily','hourly']
+                if key not in schedspec:  # ['monthly','weekly','daily','hourly']
                     logging.error(f"filling in key {key} for schedule {schedname}")
                     schedspec[key] = {}
-                for item, itemtype in config_file_format[key].items():    # items in the schedspec
+                for item, itemtype in config_file_format[key].items():  # items in the schedspec
                     if item not in schedspec[key]:  # items are "retain", "date", etc
                         if itemtype == int:
                             schedspec[key][item] = 0
@@ -215,7 +219,7 @@ if __name__ == '__main__':
                         elif itemtype == str:
                             schedspec[key][item] = ''
 
-    #print(f"{json.dumps(config,indent=2)}")
+    # print(f"{json.dumps(config,indent=2)}")
 
     # create Cluster object so we can use the Weka API
     clusterspeclist = args.clusterspec.split(":")
@@ -278,7 +282,8 @@ if __name__ == '__main__':
 
             if next_snap_time not in next_foreach:
                 next_foreach[next_snap_time] = {}
-            next_foreach[next_snap_time][fsname] = next_snap    # build a dict so we can sort by snaptime; each "time" is a list of fs's
+            next_foreach[next_snap_time][
+                fsname] = next_snap  # build a dict so we can sort by snaptime; each "time" is a list of fs's
             logger.error(f"type(next_snap)={type(next_snap)}")
 
         logger.debug(
@@ -297,10 +302,12 @@ if __name__ == '__main__':
 
         # Create Snaps
         for fsname, next_snap in next_foreach[next_snaptime].items():  # current list of snaps that need to be taken
-            next_snapname = next_snap.name + "." + next_snap.next_snaptime(now).strftime("%Y-%m-%d_%H%M")
-            if type(next_snap) == snapshots.HourlySchedule:
-                if next_snap.name_format != "standard":
-                    next_snapname = utc_next_snaptime.strftime("@GMT-%Y.%m.%d-%H.%M.%S")    # windows format
+            next_snapdt = next_snap.next_snaptime(now)
+            if type(next_snap) == snapshots.HourlySchedule and next_snap.name_format != "standard":
+                next_snapname = next_snapdt.strftime("@GMT-%Y.%m.%d-%H.%M.%S")  # windows format
+            else:
+                next_snapname = next_snap.name + "." + next_snapdt.strftime("%Y-%m-%d_%H%M")
+
             logger.debug(f"Next snapname is {next_snapname}")
 
             # create a snap
@@ -323,14 +330,14 @@ if __name__ == '__main__':
 
         # Delete old snaps - start with getting a list of snaps
         try:
-            snapshots = snapd_call_api(cluster_obj, method="snapshots_list", parms={})
+            snapshot_list = snapd_call_api(cluster_obj, method="snapshots_list", parms={})
         except Exception as exc:
             logger.error(f"Error collecting snapshot list: {exc}")
             sys.exit(1)
 
         logger.debug("checking if old snaps need to be removed")
         our_snaps = {}
-        for snapshot in snapshots:
+        for snapshot in snapshot_list:
             fsname = snapshot["filesystem"]
             snapname = snapshot["name"]
             # make sure it's one of ours, not one made by the customer
@@ -342,7 +349,8 @@ if __name__ == '__main__':
             else:
                 # is it one of our standard-named snaps?
                 snap_list = snapname.split('.')
-                if len(snap_list) == 2 and snap_list[0] in ["monthly","weekly","daily","hourly"]:    # ours start with the schedule name
+                if len(snap_list) == 2 and snap_list[0] in ["monthly", "weekly", "daily",
+                                                            "hourly"]:  # ours start with the schedule name
                     if fsname not in our_snaps:
                         our_snaps[fsname] = []
                     our_snaps[fsname].append(snapname)
