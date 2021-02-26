@@ -122,42 +122,19 @@ if __name__ == '__main__':
     # create handler to log to stderr
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(logging.Formatter(FORMAT))
-    # console_handler.setLevel(loglevel)
 
     # add handlers to root logger
     if syslog_handler is not None:
         logger.addHandler(syslog_handler)
     logger.addHandler(console_handler)
 
-    # configure logging in signals module
-    # sublog = logging.getLogger( "signals" )
-    # sublog.setLevel(loglevel)
-
-    # configure logging in wekacluster module
-    sublog = logging.getLogger("wekacluster")
-    sublog.setLevel(logging.INFO)
-
-    # configure logging in wekaapi module
-    sublog = logging.getLogger("wekaapi")
-    sublog.setLevel(logging.ERROR)
-
-    # configure logging in sthreads module
-    sublog = logging.getLogger("sthreads")
-    sublog.setLevel(logging.ERROR)
-
-    # configure logging in circular module
+    logging.getLogger("wekacluster").setLevel(logging.ERROR)
+    logging.getLogger("wekaapi").setLevel(logging.ERROR)
+    logging.getLogger("sthreads").setLevel(logging.ERROR)
     logging.getLogger("circular").setLevel(logging.ERROR)
-
-    # configure logging in snapshots module
     logging.getLogger("snapshots").setLevel(logging.INFO)
-
-    # configure logging in upload module
     logging.getLogger("upload").setLevel(logging.INFO)
 
-    # configure logging in connectionpool module
-    # logging.getLogger("connectionpool").setLevel(logging.ERROR)
-    # logging.getLogger("retry").setLevel(logging.ERROR)
-    # urllib3 logging
     add_stderr_logger(level=logging.ERROR)
 
     with open(args.configfile, 'r') as f:
