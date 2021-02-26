@@ -253,8 +253,8 @@ if __name__ == '__main__':
                               upload=sched['daily']['upload'])
         hourly = HourlySchedule(start_day=sched['hourly']['start_day'], stop_day=sched['hourly']['stop_day'],
                                 start_time=sched['hourly']['start_time'], stop_time=sched['hourly']['stop_time'],
-                                snap_minute=sched['hourly']['snap_minute'], retain=sched['hourly']['retain'],
-                                upload=sched['hourly']['upload'])
+                                snap_minute=sched['hourly']['snap_minute'], name_format=sched['hourly']['name_format'],
+                                retain=sched['hourly']['retain'], upload=sched['hourly']['upload'])
         schedules[schedname] = SnapSchedule(schedname, monthly, weekly, daily, hourly)
 
     # let's get to work!
