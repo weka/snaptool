@@ -161,7 +161,7 @@ if __name__ == '__main__':
     add_stderr_logger(level=logging.ERROR)
 
     with open(args.configfile, 'r') as f:
-        config = yaml.load(stream=f, Loader=Loader)
+        config = yaml.load(stream=f, Loader=yaml.Loader)
 
     # logger.debug(f"{json.dumps(config)}")
 
