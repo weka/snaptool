@@ -138,15 +138,15 @@ class DailySchedule(BaseSchedule):
             else:
                 # schedule for tomorrow
                 temp_date = now + datetime.timedelta(days=1)
-                self.nextsnap_dt = datetime.datetime(temp_date.year, temp_date.month, temp_date.day, self.hour, self.minute)
+                self.nextsnap_dt = datetime.datetime(temp_date.year, temp_date.month, temp_date.day,
+                                                     self.hour, self.minute)
         log.debug(f"(daily), returning self.nextsnap_dt={self.nextsnap_dt}")
         return self.nextsnap_dt
 
 class HourlySchedule(BaseSchedule):
     # default is mon-fri, 9-5, top of hour
-    def __init__(self, start_day=0, stop_day=4, start_time=900, stop_time=1700, snap_minute=0, name_format="standard",
+    def __init__(self, start_day=0, stop_day=4, start_time=900, stop_time=1700, snap_minute=0,
                  retain=10, upload=False):    # snap_minute == mins past the hour to snap
-        self.name_format = name_format
         self.start_day = start_day
         self.stop_day = stop_day
         self.start_time = start_time

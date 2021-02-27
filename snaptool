@@ -52,7 +52,6 @@ config_file_format = {
         'start_time': int,
         'stop_time': int,
         'snap_minute': int,
-        'name_format': str,
         'retain': int,
         'upload': bool
     }
@@ -230,8 +229,8 @@ if __name__ == '__main__':
                               upload=sched['daily']['upload'])
         hourly = HourlySchedule(start_day=sched['hourly']['start_day'], stop_day=sched['hourly']['stop_day'],
                                 start_time=sched['hourly']['start_time'], stop_time=sched['hourly']['stop_time'],
-                                snap_minute=sched['hourly']['snap_minute'], name_format=sched['hourly']['name_format'],
-                                retain=sched['hourly']['retain'], upload=sched['hourly']['upload'])
+                                snap_minute=sched['hourly']['snap_minute'], retain=sched['hourly']['retain'],
+                                upload=sched['hourly']['upload'])
         schedules[schedname] = SnapSchedule(schedname, monthly, weekly, daily, hourly)
 
     # let's get to work!
@@ -279,10 +278,8 @@ if __name__ == '__main__':
         # Create Snaps
         for fsname, next_snap in next_foreach[next_snaptime].items():  # current list of snaps that need to be taken
             next_snapdt = next_snap.next_snaptime(now)
-            if type(next_snap) == snapshots.HourlySchedule and next_snap.name_format != "standard":
-                next_snapname = next_snapdt.strftime("@GMT-%Y.%m.%d-%H.%M.%S")  # windows format
-            else:
-                next_snapname = next_snap.name + "." + next_snapdt.strftime("%Y-%m-%d_%H%M")
+            accesspoint_name = next_snapdt.strftime("@GMT-%Y.%m.%d-%H.%M.%S")  # windows format
+            next_snapname = next_snap.name + "." + next_snapdt.strftime("%Y-%m-%d_%H%M")
 
             logger.debug(f"Next snapname is {next_snapname}")
 
@@ -292,7 +289,7 @@ if __name__ == '__main__':
                 created_snap = cluster_obj.call_api(method="snapshot_create", parms={
                     "file_system": fsname,
                     "name": next_snapname,
-                    "access_point": next_snapname,
+                    "access_point": accesspoint_name,
                     "is_writable": False})
                 logger.info(f"snap {next_snapname} has been created on fs {fsname}")
                 # needs error-checking
@@ -317,19 +314,14 @@ if __name__ == '__main__':
             fsname = snapshot["filesystem"]
             snapname = snapshot["name"]
             # make sure it's one of ours, not one made by the customer
-            if snapname[:5] == '@GMT-':
-                # it's a windows name format hourly snap
+
+            # is it one of our standard-named snaps?
+            snap_list = snapname.split('.')
+            # ours start with the schedule name
+            if len(snap_list) == 2 and snap_list[0] in ["monthly", "weekly", "daily", "hourly"]:
                 if fsname not in our_snaps:
-                    our_snaps[fsname] = []
+                     our_snaps[fsname] = []
                 our_snaps[fsname].append(snapname)
-            else:
-                # is it one of our standard-named snaps?
-                snap_list = snapname.split('.')
-                if len(snap_list) == 2 and snap_list[0] in ["monthly", "weekly", "daily",
-                                                            "hourly"]:  # ours start with the schedule name
-                    if fsname not in our_snaps:
-                        our_snaps[fsname] = []
-                    our_snaps[fsname].append(snapname)
 
         # logger.debug(f"{our_snaps}")
 
@@ -341,7 +333,7 @@ if __name__ == '__main__':
                 fs_snaps = our_snaps[fsname]
                 for snapname in fs_snaps:
                     temp_list = snapname.split('.')
-                    if temp_list[0] == next_snap.name or temp_list[0][:5] == '@GMT-':
+                    if temp_list[0] == next_snap.name:
                         snap_list.append(snapname)
                 logger.debug(
                     f"fs {fsname} should keep {next_snap.retain} {next_snap.name} snaps, and currently has {len(snap_list)} of them")
