@@ -16,7 +16,6 @@ import sys
 import time
 import traceback
 #from multiprocessing import Process
-import threading
 import json
 import yaml
 import datetime
