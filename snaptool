@@ -4,28 +4,58 @@
 # Vince Fleming
 # vince@weka.io
 #
-VERSION="0.9.0"
 
-# system imports
-import logging
-import logging.handlers
-from logging import debug, info, warning, error, critical
+
 import argparse
-import os
+import datetime
+# system imports
+import logging.handlers
+import platform
 import sys
 import time
-import traceback
-#from multiprocessing import Process
-import json
-import yaml
-import datetime
-from urllib3 import add_stderr_logger
-import queue
 
-from wekalib.wekacluster import WekaCluster
+import yaml
+from urllib3 import add_stderr_logger
+
 import wekalib.signals as signals
 from snapshots import SnapSchedule, MonthlySchedule, WeeklySchedule, DailySchedule, HourlySchedule
+import snapshots
 from upload import UploadSnapshot, intent_log
+from wekalib.wekacluster import WekaCluster
+
+VERSION = "0.9.1"
+
+config_file_format = {
+    'monthly': {
+        'date': int,
+        'time': int,
+        'retain': int,
+        'upload': bool
+    },
+    'weekly': {
+        'weekday': int,
+        'time': int,
+        'retain': int,
+        'upload': bool
+    },
+    'daily': {
+        'start_day': int,
+        'stop_day': int,
+        'time': int,
+        'retain': int,
+        'upload': bool
+    },
+    'hourly': {
+        'start_day': int,
+        'stop_day': int,
+        'start_time': int,
+        'stop_time': int,
+        'snap_minute': int,
+        'retain': int,
+        'upload': bool
+    }
+}
+
 
 def snapd_call_api(cluster, method, parms):
     stopit = False
@@ -33,33 +63,36 @@ def snapd_call_api(cluster, method, parms):
     while not stopit:
         # api only fails under extreme circumstances
         try:
-            api_return = cluster.call_api(method=method,parms=parms)
+            api_return = cluster.call_api(method=method, parms=parms)
             stopit = True
-        #except APIException as exc:
+        # except APIException as exc:
         except Exception as exc:
             num_errors += 1
-            logger.error(f"Error {exc} while executing API method {method}; attemping to re-establish communications (retry {num_errors})")
-            if num_errors > 10: # give up
+            logger.error(
+                f"Error {exc} while executing API method {method}; attemping to re-establish communications (retry {num_errors})")
+            if num_errors > 10:  # give up
                 raise
-            time.sleep(5)               # give the cluster some time to resolve it's issues
-            cluster.refresh_config()    # will try to re-establish communications
+            time.sleep(5)  # give the cluster some time to resolve it's issues
+            cluster.refresh_config()  # will try to re-establish communications
     return api_return
+
 
 if __name__ == '__main__':
     # handle signals (ie: ^C and such)
     signals.signal_handling()
 
     parser = argparse.ArgumentParser(description="Weka Snapshot Management Daemon")
-    parser.add_argument("-c", "--configfile", dest='configfile', default="./snaptool.yml", help="override ./snaptool.yml as config file")
+    parser.add_argument("-c", "--configfile", dest='configfile', default="./snaptool.yml",
+                        help="override ./snaptool.yml as config file")
     parser.add_argument("-p", "--port", dest='port', default="13999", help="TCP port number to listen on")
-    parser.add_argument( 'clusterspec', default="localhost", help="Cluster specification.  <host>,<host>,...:authfile" )
+    parser.add_argument('clusterspec', default="localhost", help="Cluster specification.  <host>,<host>,...:authfile")
     parser.add_argument("-v", "--verbosity", action="count", default=0, help="increase output verbosity")
     parser.add_argument("--version", dest="version", default=False, action="store_true", help="Display version number")
     args = parser.parse_args()
 
     if args.version:
-        print( f"{sys.argv[0]} version {VERSION}" )
-        sys.exit( 0 )
+        print(f"{sys.argv[0]} version {VERSION}")
+        sys.exit(0)
 
     if args.verbosity == 0:
         loglevel = logging.ERROR
@@ -76,62 +109,92 @@ if __name__ == '__main__':
     logger.setLevel(loglevel)
 
     # create handler to log to syslog
-    syslog_handler = logging.handlers.SysLogHandler(address="/dev/log")
+    print(f"setting syslog on {platform.platform()}")
+    if platform.platform()[:5] == "macOS":
+        syslogaddr = "/var/run/syslog"
+    else:
+        syslogaddr = "/dev/log"
+    syslog_handler = logging.handlers.SysLogHandler(syslogaddr)
     syslog_handler.setFormatter(logging.Formatter(FORMAT))
 
     # create handler to log to stderr
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(logging.Formatter(FORMAT))
-    #console_handler.setLevel(loglevel)
 
     # add handlers to root logger
-    logger.addHandler(syslog_handler)
+    if syslog_handler is not None:
+        logger.addHandler(syslog_handler)
     logger.addHandler(console_handler)
 
-    # configure logging in signals module
-    #sublog = logging.getLogger( "signals" )
-    #sublog.setLevel(loglevel)
-
-    # configure logging in wekacluster module
-    sublog = logging.getLogger( "wekacluster" )
-    sublog.setLevel(logging.INFO)
-
-    # configure logging in wekaapi module
-    sublog = logging.getLogger( "wekaapi" )
-    sublog.setLevel(logging.ERROR)
-
-    # configure logging in sthreads module
-    sublog = logging.getLogger( "sthreads" )
-    sublog.setLevel(logging.ERROR)
-
-    # configure logging in circular module
-    logging.getLogger("circular").setLevel(logging.ERROR)
-
-    # configure logging in snapshots module
+    logging.getLogger("wekalib.wekacluster").setLevel(logging.ERROR)
+    logging.getLogger("wekalib.wekaapi").setLevel(logging.ERROR)
+    logging.getLogger("wekalib.sthreads").setLevel(logging.ERROR)
+    logging.getLogger("wekalib.circular").setLevel(logging.ERROR)
     logging.getLogger("snapshots").setLevel(logging.INFO)
-
-    # configure logging in upload module
     logging.getLogger("upload").setLevel(logging.INFO)
 
-    # configure logging in connectionpool module
-    #logging.getLogger("connectionpool").setLevel(logging.ERROR)
-    #logging.getLogger("retry").setLevel(logging.ERROR)
-    # urllib3 logging
     add_stderr_logger(level=logging.ERROR)
 
-
     with open(args.configfile, 'r') as f:
-        try:
-            config = yaml.load(stream=f, Loader=yaml.FullLoader)
-        except AttributeError:
-            config = yaml.load(stream=f)
+        config = yaml.load(stream=f, Loader=yaml.Loader)
 
-    #logger.debug(f"{json.dumps(config)}")
+    # logger.debug(f"{json.dumps(config)}")
 
     #
-    # Sanity-check configuration?
+    # syntax-check configuration
     #
+    errors = False
+    for major_item in config:
+        if major_item not in ['filesystems', 'schedules']:
+            logging.error(f"Syntax Error in config file ({args.configfile}): category {major_item} unknown")
+            errors = True
 
+    if 'filesystems' not in config or len(config['filesystems']) == 0:
+        logging.error(f"Syntax Error in config file ({args.configfile}): No filesystems defined")
+        errors = True
+    for fs, fsspec in config['filesystems'].items():
+        if 'schedule' not in fsspec or len(fsspec) != 1:
+            logging.error(
+                f"Syntax Error in config file ({args.configfile}): Invalid schedule specification for filesystem {fs}")
+            errors = True
+    if 'schedules' in config:
+        for schedname, schedspec in config['schedules'].items():  # for each custom schedule...
+            for key, spec in schedspec.items():
+                if key not in config_file_format:
+                    logging.error(
+                        f"Syntax Error in config file ({args.configfile}): custom schedule {schedname} has unknown key '{key}'")
+                    errors = True
+                for name, setting in spec.items():
+                    if name not in config_file_format[key].keys():
+                        logging.error(
+                            f"Syntax Error in config file ({args.configfile}): custom schedule {schedname}:{key} has unknown keyword '{name}'")
+                        errors = True
+                    if type(setting) != config_file_format[key][name]:
+                        logging.error(
+                            f"Syntax Error in config file ({args.configfile}): custom schedule {schedname}:{key} has invalid value {setting}")
+                        errors = True
+
+    if errors:
+        logging.error(f"Syntax Errors detected in config file ({args.configfile}): aborting")
+        sys.exit(1)
+
+    # fill in any missing items in the config
+    if 'schedules' in config:
+        for schedname, schedspec in config['schedules'].items():  # for each custom schedule...
+            for key in config_file_format:
+                if key not in schedspec:  # ['monthly','weekly','daily','hourly']
+                    logging.error(f"filling in key {key} for schedule {schedname}")
+                    schedspec[key] = {}
+                for item, itemtype in config_file_format[key].items():  # items in the schedspec
+                    if item not in schedspec[key]:  # items are "retain", "date", etc
+                        if itemtype == int:
+                            schedspec[key][item] = 0
+                        elif itemtype == bool:
+                            schedspec[key][item] = False
+                        elif itemtype == str:
+                            schedspec[key][item] = ''
+
+    # print(f"{json.dumps(config,indent=2)}")
 
     # create Cluster object so we can use the Weka API
     clusterspeclist = args.clusterspec.split(":")
@@ -150,21 +213,23 @@ if __name__ == '__main__':
     weekly = WeeklySchedule()
     daily = DailySchedule()
     hourly = HourlySchedule()
-    schedules["default"] = SnapSchedule("default", monthly, weekly, daily, hourly) # defalt schedule, always there
+    schedules["default"] = SnapSchedule("default", monthly, weekly, daily, hourly)  # defalt schedule, always there
 
     # custom schedules
     config_schedules = config["schedules"]
     for schedname, sched in config_schedules.items():
-        #logger.debug(f"schedname={schedname}, sched={sched}")
-        monthly = MonthlySchedule(date=sched['monthly']['date'], time=sched['monthly']['time'], 
-                retain=sched['monthly']['retain'], upload=sched['monthly']['upload'])
-        weekly = WeeklySchedule(weekday=sched['weekly']['weekday'], time=sched['weekly']['time'], 
-                retain=sched['weekly']['retain'], upload=sched['weekly']['upload'])
-        daily = DailySchedule(time=sched['daily']['time'], start_day=sched['daily']['start_day'], 
-                stop_day=sched['daily']['stop_day'], retain=sched['daily']['retain'], upload=sched['daily']['upload'])
-        hourly = HourlySchedule(start_day=sched['hourly']['start_day'], stop_day=sched['hourly']['stop_day'], 
-                start_time=sched['hourly']['start_time'], stop_time=sched['hourly']['stop_time'], 
-                snap_minute=sched['hourly']['snap_minute'], retain=sched['hourly']['retain'], upload=sched['hourly']['upload'])
+        # logger.debug(f"schedname={schedname}, sched={sched}")
+        monthly = MonthlySchedule(date=sched['monthly']['date'], time=sched['monthly']['time'],
+                                  retain=sched['monthly']['retain'], upload=sched['monthly']['upload'])
+        weekly = WeeklySchedule(weekday=sched['weekly']['weekday'], time=sched['weekly']['time'],
+                                retain=sched['weekly']['retain'], upload=sched['weekly']['upload'])
+        daily = DailySchedule(time=sched['daily']['time'], start_day=sched['daily']['start_day'],
+                              stop_day=sched['daily']['stop_day'], retain=sched['daily']['retain'],
+                              upload=sched['daily']['upload'])
+        hourly = HourlySchedule(start_day=sched['hourly']['start_day'], stop_day=sched['hourly']['stop_day'],
+                                start_time=sched['hourly']['start_time'], stop_time=sched['hourly']['stop_time'],
+                                snap_minute=sched['hourly']['snap_minute'], retain=sched['hourly']['retain'],
+                                upload=sched['hourly']['upload'])
         schedules[schedname] = SnapSchedule(schedname, monthly, weekly, daily, hourly)
 
     # let's get to work!
@@ -174,12 +239,11 @@ if __name__ == '__main__':
     logger.warning("Replaying intent log")
     intent_log.replay(cluster_obj)
 
-
     while True:
 
         now = datetime.datetime.now()
         logger.debug(f"current time is {now}")
-        #now = datetime.datetime(2020,12,31,23,59,45) # for testing
+        # now = datetime.datetime(2020,12,31,23,59,45) # for testing
 
         have_slept = False
 
@@ -188,39 +252,44 @@ if __name__ == '__main__':
         for fsname, filesystem in filesystems.items():
             schedname = filesystem["schedule"]
             schedule = schedules[schedname]
-            next_snap = schedule.next_snap(now) # get the next snapshot object
-            next_snap_time = next_snap.next_snaptime(now)   # time of next snapshot
+            next_snap = schedule.next_snap(now)  # get the next snapshot object
+            next_snap_time = next_snap.next_snaptime(now)  # time of next snapshot
 
             if next_snap_time not in next_foreach:
                 next_foreach[next_snap_time] = {}
-            next_foreach[next_snap_time][fsname] = next_snap    # build a dict so we can sort by snaptime; each "time" is a list of fs's
+            # build a dict so we can sort by snaptime; each "time" is a list of fs's
+            next_foreach[next_snap_time][fsname] = next_snap
 
-        logger.debug(f"next_foreach[next_snap_time] = {next_foreach[next_snap_time]}, next snap_time = {next_snap_time}")
+        logger.debug(
+            f"next_foreach[next_snap_time] = {next_foreach[next_snap_time]}, next snap_time = {next_snap_time}")
         logger.debug(f"next_foreach= {next_foreach}")
-        next_snaptime = min(next_foreach)       # get the earliest snaptime
-        #logger.debug(f"Next snapshot due to be taken at = {next_snaptime}")
+        next_snaptime = min(next_foreach)  # get the earliest snaptime
+        # logger.debug(f"Next snapshot due to be taken at = {next_snaptime}")
 
         # we should now sleep until next_snaptime; it's the next time we need to take a snap...
-        time_to_snap = next_snaptime - now      # time_to_snap will be a datetime.timedelta object
-        #time_to_snap -= datetime.timedelta(seconds=10)     # come in 10s early?
+        time_to_snap = next_snaptime - now  # time_to_snap will be a datetime.timedelta object
+
         sleep_time = time_to_snap.total_seconds()
-        logger.info(f"Next snapshot due to be taken at = {next_snaptime}; now = {now} sleeping {sleep_time}s ({time_to_snap} h:m:s.us)")
+        logger.info(
+            f"Next snapshot due to be taken at = {next_snaptime}; now = {now} sleeping {sleep_time}s ({time_to_snap} h:m:s.us)")
         time.sleep(sleep_time)
 
-
         # Create Snaps
-        for fsname, next_snap in next_foreach[next_snaptime].items():   # current list of snaps that need to be taken
-            next_snapname = next_snap.name + "." + next_snap.next_snaptime(now).strftime("%Y-%m-%d_%H%M")
+        for fsname, next_snap in next_foreach[next_snaptime].items():  # current list of snaps that need to be taken
+            next_snapdt = next_snap.next_snaptime(now)
+            accesspoint_name = next_snapdt.strftime("@GMT-%Y.%m.%d-%H.%M.%S")  # windows format
+            next_snapname = next_snap.name + "." + next_snapdt.strftime("%Y-%m-%d_%H%M")
+
             logger.debug(f"Next snapname is {next_snapname}")
 
             # create a snap
             logger.debug(f"snap {next_snapname} to be created on fs {fsname}")
             try:
-                created_snap = cluster_obj.call_api(method="snapshot_create",parms={
-                    "file_system":fsname,
-                    "name":next_snapname,
-                    "access_point":next_snapname,
-                    "is_writable":False})
+                created_snap = cluster_obj.call_api(method="snapshot_create", parms={
+                    "file_system": fsname,
+                    "name": next_snapname,
+                    "access_point": accesspoint_name,
+                    "is_writable": False})
                 logger.info(f"snap {next_snapname} has been created on fs {fsname}")
                 # needs error-checking
             except Exception as exc:
@@ -231,60 +300,50 @@ if __name__ == '__main__':
                 # if upload is True, queue it for uploading
                 UploadSnapshot(cluster_obj, fsname, next_snapname)
 
-        # - vince - indents matter here.  Look at this again.
-        # should we loop through the list again after creating all snaps, or delete as we go?
-
         # Delete old snaps - start with getting a list of snaps
         try:
-            snapshots = snapd_call_api(cluster_obj, method="snapshots_list",parms={})
+            snapshot_list = snapd_call_api(cluster_obj, method="snapshots_list", parms={})
         except Exception as exc:
             logger.error(f"Error collecting snapshot list: {exc}")
             sys.exit(1)
 
         logger.debug("checking if old snaps need to be removed")
         our_snaps = {}
-        for snapshot in snapshots:
+        for snapshot in snapshot_list:
             fsname = snapshot["filesystem"]
             snapname = snapshot["name"]
             # make sure it's one of ours, not one made by the customer
+
+            # is it one of our standard-named snaps?
             snap_list = snapname.split('.')
-            #logger.debug(f"looking at snap {fsname}/{snapname}")
-            if len(snap_list) != 2:     #first hint - schedule.time is the format; must be 2 here 
-                continue
-            if snap_list[0] not in ["monthly","weekly","daily","hourly"]:    # ours start with the schedule name
-                continue
+            # ours start with the schedule name
+            if len(snap_list) == 2 and snap_list[0] in ["monthly", "weekly", "daily", "hourly"]:
+                if fsname not in our_snaps:
+                     our_snaps[fsname] = []
+                our_snaps[fsname].append(snapname)
 
-            # got one of ours, record it
-            if fsname not in our_snaps:
-                our_snaps[fsname] = []
-            our_snaps[fsname].append(snapname)
-
-        #logger.debug(f"{our_snaps}")
+        # logger.debug(f"{our_snaps}")
 
         # now delete from the list any old snaps
-        for fsname, next_snap in next_foreach[next_snaptime].items():   # current list of snaps that have been taken
+        for fsname, next_snap in next_foreach[next_snaptime].items():  # current list of snaps that have been taken
             # make a list of this schedule's snaps...
             snap_list = []
             if fsname in our_snaps:
                 fs_snaps = our_snaps[fsname]
                 for snapname in fs_snaps:
                     temp_list = snapname.split('.')
-                    # make sure it's one of ours - did that above
-                    #if len(temp_list) != 2 and temp_list[0] not in ["monthly","weekly","daily","hourly"]:    # ours start with the schedule name
-                    #    # continue here?  don't think so
-                    #    continue
-                    # if the correct schedule (ie: monthly, weekly, etc), keep it
                     if temp_list[0] == next_snap.name:
                         snap_list.append(snapname)
-                logger.debug(f"fs {fsname} should keep {next_snap.retain} {next_snap.name} snaps, and currently has {len(snap_list)} of them")
+                logger.debug(
+                    f"fs {fsname} should keep {next_snap.retain} {next_snap.name} snaps, and currently has {len(snap_list)} of them")
 
-                delete_list = sorted(snap_list,reverse=True)[next_snap.retain:]
+                delete_list = sorted(snap_list, reverse=True)[next_snap.retain:]
                 logger.debug(f"delete_list = {delete_list}")
                 for snap in delete_list:
                     logger.info(f"snap {fsname}/{snap} being deleted")
                     try:
-                        deleted_snap = cluster_obj.call_api(method="snapshot_delete",parms={"file_system":fsname,"name":snap})
+                        deleted_snap = cluster_obj.call_api(method="snapshot_delete",
+                                                            parms={"file_system": fsname, "name": snap})
                         logger.info(f"snap {fsname}/{snap} sucessfully deleted")
                     except Exception as exc:
                         logger.error(f"error deleting snapshot {snap} from filesystem {fsname}: {exc}")
-                

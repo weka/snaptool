@@ -2,7 +2,7 @@ FROM alpine:latest
 
 RUN apk add --no-cache bash curl python3 py3-pip
 
-RUN pip3 install pyyaml python-dateutil wekalib
+RUN pip3 install pyyaml python-dateutil urllib3 wekalib
 
 ARG BASEDIR="/weka"
 ARG ID="472"

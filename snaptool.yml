@@ -32,3 +32,6 @@ schedules:
       stop_time: 2100
       snap_minute: 0
       upload: false
+  custom2:
+    monthly:
+      retain: 3
