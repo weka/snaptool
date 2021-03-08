@@ -251,6 +251,7 @@ intent_log = IntentLog("upload_intent.log")
 
 # start the upload thread
 upload_thread = threading.Thread(target=background_uploader)
+upload_thread.daemon = True
 upload_thread.start()
 log.info(f"upload_thread = {upload_thread}")
 

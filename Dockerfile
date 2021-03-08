@@ -2,7 +2,7 @@ FROM alpine:latest
 
 RUN apk add --no-cache bash curl python3 py3-pip
 
-RUN pip3 install pyyaml python-dateutil urllib3
+RUN pip3 install pyyaml python-dateutil urllib3 wekalib
 
 ARG BASEDIR="/weka"
 ARG ID="472"
@@ -16,8 +16,6 @@ COPY snaptool $BASEDIR
 COPY snaptool.yml $BASEDIR
 COPY snapshots.py $BASEDIR
 COPY upload.py $BASEDIR
-RUN mkdir $BASEDIR/wekalib
-COPY wekalib/* $BASEDIR/wekalib/
 
 RUN addgroup -S -g $ID $USER &&\
     adduser -S -h $BASEDIR -u $ID -G $USER $USER && \

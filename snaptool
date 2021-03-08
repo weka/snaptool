@@ -14,7 +14,6 @@ import platform
 import sys
 import time
 
-# from multiprocessing import Process
 import yaml
 from urllib3 import add_stderr_logger
 
