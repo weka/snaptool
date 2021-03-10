@@ -58,5 +58,12 @@ An optional verbosity can also be specified with the -v parameter.   Adding more
 docker run -d -v /dev/log:/dev/log \
     --mount type=bind,source=$PWD/snaptool.yml,target=/weka/snaptool.yml \
     wekasolutions/snaptool -vvv ip-172-31-13-179,ip-172-31-12-28,ip-172-31-1-140
+    
+docker run -d --network=host \
+    --mount type=bind,source=/root/.weka/,target=/weka/.weka/ \
+    --mount type=bind,source=/dev/log,target=/dev/log \
+    --mount type=bind,source=/etc/hosts,target=/etc/hosts \
+    --mount type=bind,source=$PWD/snaptool.yml,target=/weka/export.yml \
+    wekasolutions/snaptool -vvv ip-172-31-13-179,ip-172-31-12-28,ip-172-31-1-140    
 ```
 
