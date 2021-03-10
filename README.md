@@ -36,7 +36,7 @@ It it suggested to run the utility via systemd with auto restart set.
 
 # Snapshot Naming
 
-The format of the snapshot names is <schedule>.YYYY-MM-DD_HHMM
+The format of the snapshot names is Schedule.YYYY-MM-DD_HHMM, with the access point @GMT-YYYY.MM.DD-HH.MM.SS.   For example, a snapshot might be named hourly.2021-03-10_1700 and have the access point @GMT-2021.03.10-17.00.00.  The snapshot name will be in the local timezone, and the access point in GMT.  (in this example, the server timezone is set to GMT time)
     
 When deleting snapshots, they are sorted and the oldest deleted until there are "retain" snapshots left for the particular Schedule.
 
