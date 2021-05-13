@@ -198,7 +198,7 @@ def background_processor():
 
             log.info(f"uploading snapshot {snap.fsname}/{snap.snapname}")
             intent_log.put_record(snap.uuid, snap.fsname, snap.snapname, "upload", "in-progress")
-            snaplog.info(f"Upload Initiated:{snap.fsname}:{snap.snapname}:{snapshots}") # need snapshots to be locator
+            snaplog.info(f"Upload Initiated:{snap.fsname}:{snap.snapname}:{snapshots['locator']}") # need snapshots to be locator
 
         elif snap_stat["stowStatus"] == "SYNCHRONIZED":
             # we should only ever get here when replaying the log and this one was already in progress
