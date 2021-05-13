@@ -329,11 +329,11 @@ def background_processor():
             log.info(f"background_processor: terminating thread")
             return
 
-        if operation == "upload":
+        if snap.operation == "upload":
             upload_snap(snap)   # handles it's own errors
-        elif operation == "delete":
+        elif snap.operation == "delete":
             delete_snap(snap)
-        #elif operation == "create":
+        #elif snap.operation == "create":
             #create_snap(snap)
 
 
