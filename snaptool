@@ -274,7 +274,7 @@ if __name__ == '__main__':
         # Create Snaps
         for fsname, next_snap in next_foreach[next_snaptime].items():  # current list of snaps that need to be taken
             next_snapdt = next_snap.next_snaptime(now)
-            accesspoint_name = next_snapdt.strftime("@GMT-%Y.%m.%d-%H.%M.%S")  # windows format
+            accesspoint_name = next_snapdt.astimezone(timezone.utc).strftime("@GMT-%Y.%m.%d-%H.%M.%S")  # windows format
             next_snapname = next_snap.name + "." + next_snapdt.strftime("%Y-%m-%d_%H%M")
 
             logger.debug(f"Next snapname is {next_snapname}")
