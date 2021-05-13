@@ -103,7 +103,7 @@ class IntentLog:
         log.debug(f"sorted_snaps = {sorted_snaps}")
         log.debug(
             f"There are {len(sorted_snaps['error'])} error snaps, {len(sorted_snaps['in-progress'])} in-progress" +
-            "snaps, and {len(sorted_snaps['queued'])} queued snaps in the intent log")
+            f"snaps, and {len(sorted_snaps['queued'])} queued snaps in the intent log")
 
         # process in order of status # not sure about error ones... do we re-queue?  Should only be 1 in-progress too
         for status in ["in-progress", "error", "queued"]:
