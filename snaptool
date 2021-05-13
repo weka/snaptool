@@ -20,7 +20,7 @@ from urllib3 import add_stderr_logger
 import wekalib.signals as signals
 from snapshots import SnapSchedule, MonthlySchedule, WeeklySchedule, DailySchedule, HourlySchedule
 import snapshots
-from upload import UploadSnapshot, intent_log
+from background import QueueOperation, intent_log
 from wekalib.wekacluster import WekaCluster
 
 VERSION = "0.9.1"
@@ -58,13 +58,12 @@ config_file_format = {
 
 
 def snapd_call_api(cluster, method, parms):
-    stopit = False
     num_errors = 0
-    while not stopit:
+    while True:
         # api only fails under extreme circumstances
         try:
             api_return = cluster.call_api(method=method, parms=parms)
-            stopit = True
+            return api_return
         # except APIException as exc:
         except Exception as exc:
             num_errors += 1
@@ -74,7 +73,6 @@ def snapd_call_api(cluster, method, parms):
                 raise
             time.sleep(5)  # give the cluster some time to resolve it's issues
             cluster.refresh_config()  # will try to re-establish communications
-    return api_return
 
 
 if __name__ == '__main__':
@@ -130,8 +128,7 @@ if __name__ == '__main__':
     logging.getLogger("wekalib.wekaapi").setLevel(logging.ERROR)
     logging.getLogger("wekalib.sthreads").setLevel(logging.ERROR)
     logging.getLogger("wekalib.circular").setLevel(logging.ERROR)
-    logging.getLogger("snapshots").setLevel(logging.INFO)
-    logging.getLogger("upload").setLevel(logging.INFO)
+    logging.getLogger("snapshots").setLevel(logging.DEBUG)
 
     add_stderr_logger(level=logging.ERROR)
 
@@ -298,7 +295,7 @@ if __name__ == '__main__':
             # upload it?
             if next_snap.upload:
                 # if upload is True, queue it for uploading
-                UploadSnapshot(cluster_obj, fsname, next_snapname)
+                QueueOperation(cluster_obj, fsname, next_snapname, "upload")
 
         # Delete old snaps - start with getting a list of snaps
         try:
@@ -341,9 +338,6 @@ if __name__ == '__main__':
                 logger.debug(f"delete_list = {delete_list}")
                 for snap in delete_list:
                     logger.info(f"snap {fsname}/{snap} being deleted")
-                    try:
-                        deleted_snap = cluster_obj.call_api(method="snapshot_delete",
-                                                            parms={"file_system": fsname, "name": snap})
-                        logger.info(f"snap {fsname}/{snap} sucessfully deleted")
-                    except Exception as exc:
-                        logger.error(f"error deleting snapshot {snap} from filesystem {fsname}: {exc}")
+                    QueueOperation(cluster_obj, fsname, snap, "delete")
+
+

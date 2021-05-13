@@ -15,7 +15,7 @@ WORKDIR $BASEDIR
 COPY snaptool $BASEDIR
 COPY snaptool.yml $BASEDIR
 COPY snapshots.py $BASEDIR
-COPY upload.py $BASEDIR
+COPY background.py $BASEDIR
 
 RUN addgroup -S -g $ID $USER &&\
     adduser -S -h $BASEDIR -u $ID -G $USER $USER && \
