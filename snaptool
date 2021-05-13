@@ -23,7 +23,13 @@ import snapshots
 from background import QueueOperation, intent_log
 from wekalib.wekacluster import WekaCluster
 
-VERSION = "0.9.1"
+VERSION = "0.10.0"
+
+# set the root logger
+log = logging.getLogger()
+#rootlogger = logging.getLogger()
+#log = logging.getLogger(__name__)  # module log
+snaplog = logging.getLogger("snapshot") # snapshot log (a file, set below)
 
 config_file_format = {
     'monthly': {
@@ -67,7 +73,7 @@ def snapd_call_api(cluster, method, parms):
         # except APIException as exc:
         except Exception as exc:
             num_errors += 1
-            logger.error(
+            log.error(
                 f"Error {exc} while executing API method {method}; attemping to re-establish communications (retry {num_errors})")
             if num_errors > 10:  # give up
                 raise
@@ -75,7 +81,51 @@ def snapd_call_api(cluster, method, parms):
             cluster.refresh_config()  # will try to re-establish communications
 
 
-if __name__ == '__main__':
+def setup_logging():
+    FORMAT = "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
+    # create handler to log to syslog
+    print(f"setting syslog on {platform.platform()}")
+    if platform.platform()[:5] == "macOS":
+        syslogaddr = "/var/run/syslog"
+    else:
+        syslogaddr = "/dev/log"
+    syslog_handler = logging.handlers.SysLogHandler(syslogaddr)
+    syslog_handler.setFormatter(logging.Formatter(FORMAT))
+
+    # create handler to log to stderr
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(FORMAT))
+
+    # add handlers to root logger
+    if syslog_handler is not None:
+        log.addHandler(syslog_handler)
+    log.addHandler(console_handler)
+
+    logging.getLogger("wekalib.wekacluster").setLevel(logging.ERROR)
+    logging.getLogger("wekalib.wekaapi").setLevel(logging.ERROR)
+    logging.getLogger("wekalib.sthreads").setLevel(logging.ERROR)
+    logging.getLogger("wekalib.circular").setLevel(logging.ERROR)
+    logging.getLogger("snapshots").setLevel(logging.DEBUG)
+    logging.getLogger("background").setLevel(logging.DEBUG)
+
+    add_stderr_logger(level=logging.ERROR)
+
+    #snaplog = logging.basicConfig(filename='weka_snapshot.log',
+    #                              encoding='utf-8',
+    #                              format='%(asctime)s %(levelname)s:%(message)s',
+    #                              level=logging.DEBUG)
+
+    snaplog.setLevel(logging.DEBUG)
+    snaplog_handler = logging.handlers.RotatingFileHandler("snapshot.log", maxBytes=10*1024*1024, backupCount=2)
+    snaplog_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s:%(message)s'))
+    snaplog.addHandler(snaplog_handler)
+    snaplog.propagate = False
+
+    log.debug("Logging configuration complete")
+    snaplog.info("Program (re)start")
+
+
+def main():
     # handle signals (ie: ^C and such)
     signals.signal_handling()
 
@@ -101,36 +151,8 @@ if __name__ == '__main__':
     elif args.verbosity > 2:
         loglevel = logging.DEBUG
 
-    # set the root logger
-    logger = logging.getLogger()
-    FORMAT = "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
-    logger.setLevel(loglevel)
-
-    # create handler to log to syslog
-    print(f"setting syslog on {platform.platform()}")
-    if platform.platform()[:5] == "macOS":
-        syslogaddr = "/var/run/syslog"
-    else:
-        syslogaddr = "/dev/log"
-    syslog_handler = logging.handlers.SysLogHandler(syslogaddr)
-    syslog_handler.setFormatter(logging.Formatter(FORMAT))
-
-    # create handler to log to stderr
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter(FORMAT))
-
-    # add handlers to root logger
-    if syslog_handler is not None:
-        logger.addHandler(syslog_handler)
-    logger.addHandler(console_handler)
-
-    logging.getLogger("wekalib.wekacluster").setLevel(logging.ERROR)
-    logging.getLogger("wekalib.wekaapi").setLevel(logging.ERROR)
-    logging.getLogger("wekalib.sthreads").setLevel(logging.ERROR)
-    logging.getLogger("wekalib.circular").setLevel(logging.ERROR)
-    logging.getLogger("snapshots").setLevel(logging.DEBUG)
-
-    add_stderr_logger(level=logging.ERROR)
+    log.setLevel(loglevel)
+    setup_logging()
 
     with open(args.configfile, 'r') as f:
         config = yaml.load(stream=f, Loader=yaml.Loader)
@@ -233,13 +255,13 @@ if __name__ == '__main__':
 
     filesystems = config["filesystems"]
 
-    logger.warning("Replaying intent log")
+    log.warning("Replaying intent log")
     intent_log.replay(cluster_obj)
 
     while True:
 
         now = datetime.datetime.now()
-        logger.debug(f"current time is {now}")
+        log.debug(f"current time is {now}")
         # now = datetime.datetime(2020,12,31,23,59,45) # for testing
 
         have_slept = False
@@ -257,9 +279,9 @@ if __name__ == '__main__':
             # build a dict so we can sort by snaptime; each "time" is a list of fs's
             next_foreach[next_snap_time][fsname] = next_snap
 
-        logger.debug(
+        log.debug(
             f"next_foreach[next_snap_time] = {next_foreach[next_snap_time]}, next snap_time = {next_snap_time}")
-        logger.debug(f"next_foreach= {next_foreach}")
+        log.debug(f"next_foreach= {next_foreach}")
         next_snaptime = min(next_foreach)  # get the earliest snaptime
         # logger.debug(f"Next snapshot due to be taken at = {next_snaptime}")
 
@@ -267,7 +289,7 @@ if __name__ == '__main__':
         time_to_snap = next_snaptime - now  # time_to_snap will be a datetime.timedelta object
 
         sleep_time = time_to_snap.total_seconds()
-        logger.info(
+        log.info(
             f"Next snapshot due to be taken at = {next_snaptime}; now = {now} sleeping {sleep_time}s ({time_to_snap} h:m:s.us)")
         time.sleep(sleep_time)
 
@@ -277,20 +299,20 @@ if __name__ == '__main__':
             accesspoint_name = next_snapdt.astimezone(datetime.timezone.utc).strftime("@GMT-%Y.%m.%d-%H.%M.%S")  # windows format
             next_snapname = next_snap.name + "." + next_snapdt.strftime("%Y-%m-%d_%H%M")
 
-            logger.debug(f"Next snapname is {next_snapname}")
+            log.debug(f"Next snapname is {next_snapname}")
 
             # create a snap
-            logger.debug(f"snap {next_snapname} to be created on fs {fsname}")
+            log.debug(f"snap {next_snapname} to be created on fs {fsname}")
             try:
                 created_snap = cluster_obj.call_api(method="snapshot_create", parms={
                     "file_system": fsname,
                     "name": next_snapname,
                     "access_point": accesspoint_name,
                     "is_writable": False})
-                logger.info(f"snap {next_snapname} has been created on fs {fsname}")
+                log.info(f"snap {next_snapname} has been created on fs {fsname}")
                 # needs error-checking
             except Exception as exc:
-                logger.error(f"error creating snapshot {next_snapname} on filesystem {fsname}: {exc}")
+                log.error(f"error creating snapshot {next_snapname} on filesystem {fsname}: {exc}")
 
             # upload it?
             if next_snap.upload:
@@ -301,10 +323,10 @@ if __name__ == '__main__':
         try:
             snapshot_list = snapd_call_api(cluster_obj, method="snapshots_list", parms={})
         except Exception as exc:
-            logger.error(f"Error collecting snapshot list: {exc}")
+            log.error(f"Error collecting snapshot list: {exc}")
             sys.exit(1)
 
-        logger.debug("checking if old snaps need to be removed")
+        log.debug("checking if old snaps need to be removed")
         our_snaps = {}
         for snapshot in snapshot_list:
             fsname = snapshot["filesystem"]
@@ -331,13 +353,15 @@ if __name__ == '__main__':
                     temp_list = snapname.split('.')
                     if temp_list[0] == next_snap.name:
                         snap_list.append(snapname)
-                logger.debug(
+                log.debug(
                     f"fs {fsname} should keep {next_snap.retain} {next_snap.name} snaps, and currently has {len(snap_list)} of them")
 
                 delete_list = sorted(snap_list, reverse=True)[next_snap.retain:]
-                logger.debug(f"delete_list = {delete_list}")
+                log.debug(f"delete_list = {delete_list}")
                 for snap in delete_list:
-                    logger.info(f"snap {fsname}/{snap} being deleted")
+                    log.info(f"snap {fsname}/{snap} being deleted")
                     QueueOperation(cluster_obj, fsname, snap, "delete")
 
 
+if __name__ == '__main__':
+    main()
