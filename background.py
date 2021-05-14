@@ -243,15 +243,16 @@ def background_processor():
                 return
 
     def delete_snap(snap):
-        #fsname = snap.fsname
-        #snapname = snap.snapname
         log.debug(f"deleting snap {snap.fsname}/{snap.snapname}")
+        # maybe do a snap_status() so we know if it has an object locator and can reference the locator later?
+        status = snapshot_status(snap)
+        locator = status['locator']
         try:
             # ask cluster to delete the snap
             deleted_snap = snap.cluster_obj.call_api(method="snapshot_delete",
                                                 parms={"file_system": snap.fsname, "name": snap.snapname})
-            log.info(f"snap {snap.fsname}/{snap.snapname} sucessfully deleted")
-            log.debug(f"data returned = {deleted_snap}")
+            log.info(f"snap {snap.fsname}/{snap.snapname} delete initiated")
+            #log.debug(f"data returned = {deleted_snap}")
         except Exception as exc:
             log.error(f"error deleting snapshot {snap.snapname} from filesystem {snap.fsname}: {exc}")
 
@@ -263,20 +264,20 @@ def background_processor():
             try:
                 this_snap = snapshot_status(snap)
             except Exception:
-                # when the snap no longer exists, do we get an exception or return code?
-                log.debug(f"snap delete raised exception")
+                # when the snap no longer exists, we get a None back, so this is an error
+                #log.debug(f"snap delete raised exception")
                 log.error(f"error listing snapshots: checking status")
                 return
 
-            # when the snap no longer exists, do we get an exception or return code? Will we just get this None?
+            # when the snap no longer exists, we get a None from snap_status()
             if this_snap is None:
-                log.error(f"no snap status for {snap.fsname}/{snap.snapname}?")
+                intent_log.put_record(snap.uuid, snap.fsname, snap.snapname, "delete", "complete")
+                log.info(f"snap {snap.fsname}/{snap.snapname} sucessfully deleted")
+                snaplog.info(f"delete complete:{snap.fsname}:{snap.snapname}:{locator}")
                 return
-            log.debug(f"this_snap is {this_snap}")
+            #log.debug(f"this_snap is {this_snap}")
 
-            time.sleep(5)  # give it some time to , check in every 5s
-        intent_log.put_record(snap.uuid, snap.fsname, snap.snapname, "delete", "complete")
-        log.info(f"snap {snap.fsname}/{snap.snapname} sucessfully deleted")
+            time.sleep(5)  # give it some time to delete, check in every 5s
 
 
     """
