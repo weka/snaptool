@@ -211,6 +211,7 @@ def background_processor():
         # get the current snap status to make sure it looks valid
         try:
             snap_stat = snapshot_status(snap)
+            # 'creationTime': '2021-05-14T15:15:00Z' - use to determine how long it takes to upload?
         except Exception:
             log.error(f"unable to upload snapshot {snap.fsname}/{snap.snapname}")
             return
