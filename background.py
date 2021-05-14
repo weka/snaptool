@@ -278,7 +278,7 @@ def background_processor():
                 else:
                     log.error(
                         f"upload status of {snap.fsname}/{snap.snapname} is {this_snap['stowStatus']}/" +
-                        "{this_snap['objectProgress']}?")
+                        f"{this_snap['objectProgress']}?")
                     return  # prevent infinite loop
             else:
                 log.error(f"no snap status for {snap.fsname}/{snap.snapname}?")
