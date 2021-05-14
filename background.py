@@ -198,7 +198,7 @@ def background_processor():
 
             log.info(f"uploading snapshot {snap.fsname}/{snap.snapname}")
             intent_log.put_record(snap.uuid, snap.fsname, snap.snapname, "upload", "in-progress")
-            snaplog.info(f"Upload Initiated:{snap.fsname}:{snap.snapname}:{snapshots['locator']}")
+            snaplog.info(f"Upload initiated:{snap.fsname}:{snap.snapname}:{snapshots['locator']}")
 
         elif snap_stat["stowStatus"] == "SYNCHRONIZED":
             # we should only ever get here when replaying the log and this one was already in progress
@@ -210,7 +210,7 @@ def background_processor():
 
         # monitor progress - we have to wait for this one to complete before uploading another
         upload_complete = False
-        while not upload_complete:
+        while True:
             time.sleep(5)  # give it some time to upload, check in every 5s
             # get snap info via api
             try:
@@ -218,10 +218,6 @@ def background_processor():
             except Exception:
                 log.error(f"error listing snapshots: checking status")
                 return
-
-            if this_snap == None:
-                log.error(f"no snap status for {snap.fsname}/{snap.snapname}?")
-                continue
 
             if this_snap is not None:
                 if this_snap["stowStatus"] == "UPLOADING":
@@ -231,8 +227,8 @@ def background_processor():
                 elif this_snap["stowStatus"] == "SYNCHRONIZED":
                     log.info(f"upload of {snap.fsname}/{snap.snapname} complete.")
                     intent_log.put_record(snap.uuid, snap.fsname, snap.snapname, "upload", "complete")
-                    upload_complete = True
-                    continue
+                    snaplog.info(f"Upload complete:{snap.fsname}:{snap.snapname}:{this_snap['locator']}")
+                    return
                 else:
                     log.error(
                         f"upload status of {snap.fsname}/{snap.snapname} is {this_snap['stowStatus']}/" +
@@ -268,6 +264,9 @@ def background_processor():
         except Exception as exc:
             log.error(f"error deleting snapshot {snap.snapname} from filesystem {snap.fsname}: {exc}")
 
+        intent_log.put_record(snap.uuid, snap.fsname, snap.snapname, "delete", "in-progress")
+        snaplog.info(f"Delete Initiated:{snap.fsname}:{snap.snapname}:{snapshots['locator']}")
+
         # delete may take some time, particularly if uploaded to obj and it's big
         time.sleep(0.1)  # give just a little time, just in case it's instant
         delete_complete = False
@@ -285,7 +284,7 @@ def background_processor():
             if this_snap is None:
                 intent_log.put_record(snap.uuid, snap.fsname, snap.snapname, "delete", "complete")
                 log.info(f"snap {snap.fsname}/{snap.snapname} sucessfully deleted")
-                snaplog.info(f"delete complete:{snap.fsname}:{snap.snapname}:{locator}")
+                snaplog.info(f"Delete complete:{snap.fsname}:{snap.snapname}:{locator}")
                 return
             #log.debug(f"this_snap is {this_snap}")
 
@@ -310,8 +309,9 @@ def background_processor():
             log.error(f"error creating snapshot {snap.snapname} on filesystem {snap.fsname}: {exc}")
     """
 
-
+    #
     # main background_processor() logic here:
+    #
 
     main_thread = threading.main_thread()
 
@@ -336,10 +336,6 @@ def background_processor():
                 return
 
         log.debug(f"Queue entry received {snap.fsname}, {snap.snapname}, {snap.operation}")
-        #fsname = snap.fsname
-        #snapname = snap.snapname
-        #operation = snap.operation
-        #cluster_obj = snap.cluster_obj
 
         if snap.fsname == "WEKA_TERMINATE_THREAD" and snap.snapname == "WEKA_TERMINATE_THREAD":
             log.info(f"background_processor: terminating thread")
