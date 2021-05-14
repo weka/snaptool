@@ -176,21 +176,23 @@ def background_processor():
     def sleeptimer(loopcount, progress):
         if loopcount > 20:
             if progress < 50:
-                return 30   # if not progressing, sleep longer
+                return 30.0   # if not progressing, sleep longer
             elif progress > 80:
-                return 10
+                return 10.0
 
         if loopcount > 10:
             if progress < 50:
-                return 20   # if not progressing, sleep longer
+                return 20.0   # if not progressing, sleep longer
             elif progress > 80:
-                return 10
+                return 10.0
 
         if loopcount > 5:
             if progress < 50:
-                return 10   # if not progressing, sleep longer
+                return 10.0   # if not progressing, sleep longer
             else:
-                return 5    # first 25s
+                return 5.0    # first 25s
+
+        return 5.0  # default
 
 
     def upload_snap(snap):
@@ -233,7 +235,7 @@ def background_processor():
         # otherwise, it should be uploading, so we fall through and monitor it
 
         # monitor progress - we have to wait for this one to complete before uploading another
-        sleeptime = 5
+        sleeptime = 5.0
         loopcount = 0
         while True:
             time.sleep(sleeptime)  # give it some time to upload, check in every 5s
