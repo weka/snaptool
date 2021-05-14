@@ -246,7 +246,13 @@ def background_processor():
         log.debug(f"deleting snap {snap.fsname}/{snap.snapname}")
         # maybe do a snap_status() so we know if it has an object locator and can reference the locator later?
         status = snapshot_status(snap)
-        locator = status['locator']
+        if status is None:
+            # already gone? make sure it shows that way in the logs
+            intent_log.put_record(snap.uuid, snap.fsname, snap.snapname, "delete", "complete")
+            log.info(f"snap {snap.fsname}/{snap.snapname} sucessfully deleted")
+        else:
+            locator = status['locator']
+
         try:
             # ask cluster to delete the snap
             deleted_snap = snap.cluster_obj.call_api(method="snapshot_delete",
