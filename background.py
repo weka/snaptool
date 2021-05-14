@@ -21,7 +21,7 @@ from threading import Lock
 # from snapshots import SnapSchedule, MonthlySchedule, WeeklySchedule, DailySchedule, HourlySchedule
 
 log = getLogger(__name__)
-snaplog = getLogger("background")
+snaplog = getLogger("snapshot")
 
 class IntentLog:
     def __init__(self, logfilename):
