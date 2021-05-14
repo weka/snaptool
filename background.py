@@ -47,7 +47,7 @@ class IntentLog:
 
     # replay the log on a cluster
     def replay(self, cluster):
-        log.critical(f"Replaying upload intent log")
+        log.info(f"Replaying upload intent log")
         for uuid, fsname, snapname, operation in self._incomplete_records():
             log.info(f"re-scheduling {fsname}/{snapname}")
             QueueOperation(cluster, fsname, snapname, operation, uuid=uuid)

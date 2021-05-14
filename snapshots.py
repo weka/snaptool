@@ -102,8 +102,7 @@ class WeeklySchedule(BaseSchedule):
                     # today, but hasn't happened yet
                     self.nextsnap_dt = temp_datetime
                     return self.nextsnap_dt
-                    #continue
-            log.debug(f"already happened")
+
             day_delta = 7 + self.weekday - now_weekday
             log.debug(f"already happened. day_delta = {day_delta}")
             if day_delta > 7:
