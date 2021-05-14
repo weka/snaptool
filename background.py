@@ -265,7 +265,7 @@ def background_processor():
             log.error(f"error deleting snapshot {snap.snapname} from filesystem {snap.fsname}: {exc}")
 
         intent_log.put_record(snap.uuid, snap.fsname, snap.snapname, "delete", "in-progress")
-        snaplog.info(f"Delete Initiated:{snap.fsname}:{snap.snapname}:{snapshots['locator']}")
+        snaplog.info(f"Delete Initiated:{snap.fsname}:{snap.snapname}:{locator}")
 
         # delete may take some time, particularly if uploaded to obj and it's big
         time.sleep(0.1)  # give just a little time, just in case it's instant
