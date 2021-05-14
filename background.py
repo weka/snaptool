@@ -250,6 +250,7 @@ def background_processor():
             # already gone? make sure it shows that way in the logs
             intent_log.put_record(snap.uuid, snap.fsname, snap.snapname, "delete", "complete")
             log.info(f"snap {snap.fsname}/{snap.snapname} sucessfully deleted")
+            return
         else:
             locator = status['locator']
 
