@@ -245,7 +245,12 @@ def background_processor():
     def delete_snap(snap):
         log.debug(f"deleting snap {snap.fsname}/{snap.snapname}")
         # maybe do a snap_status() so we know if it has an object locator and can reference the locator later?
-        status = snapshot_status(snap)
+        try:
+            status = snapshot_status(snap)
+        except:
+            log.error(f"unable to delete snapshot {snap.fsname}/{snap.snapname}")
+            return
+
         if status is None:
             # already gone? make sure it shows that way in the logs
             intent_log.put_record(snap.uuid, snap.fsname, snap.snapname, "delete", "complete")
@@ -339,6 +344,8 @@ def background_processor():
         if snap.fsname == "WEKA_TERMINATE_THREAD" and snap.snapname == "WEKA_TERMINATE_THREAD":
             log.info(f"background_processor: terminating thread")
             return
+
+        time.sleep(5)   # slow down... make sure the snap is settled.
 
         if snap.operation == "upload":
             upload_snap(snap)   # handles it's own errors
