@@ -335,7 +335,7 @@ def background_processor():
                 # main thread died - exit so the program exits; we can't live without the main thread
                 return
 
-        log.debug(f"Queue entry received {snap}")
+        log.debug(f"Queue entry received {snap.fsname}, {snap.snapname}, {snap.operation}")
         #fsname = snap.fsname
         #snapname = snap.snapname
         #operation = snap.operation
