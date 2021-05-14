@@ -315,10 +315,8 @@ def background_processor():
 
         # delete may take some time, particularly if uploaded to obj and it's big
         time.sleep(1)  # give just a little time, just in case it's instant
-        delete_complete = False
-        sleeptime = 5.0
         loopcount = 0
-        while not delete_complete:
+        while True:
             # if may happen quickly, so sleep at the end of the cycle
             try:
                 this_snap = snapshot_status(snap)
