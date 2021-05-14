@@ -167,11 +167,34 @@ def background_processor():
             # hmm... this one doesn't exist on the cluster? Let calling routine handle it
             return None
         else:
-            log.debug(f"snap_stat is {status}")
+            #log.debug(f"snap_stat is {status}")
+            pass
 
         return status[0]
 
+    # sleeptimer will increase sleep time so we don't spam the logs
+    def sleeptimer(loopcount, progress):
+        if loopcount > 20:
+            if progress < 50:
+                return 30   # if not progressing, sleep longer
+            elif progress > 80
+                return 10
+
+        if loopcount > 10:
+            if progress < 50:
+                return 20   # if not progressing, sleep longer
+            elif progress > 80
+                return 10
+
+        if loopcount > 5:
+            if progress < 50:
+                return 10   # if not progressing, sleep longer
+            else:
+                return 5    # first 25s
+
+
     def upload_snap(snap):
+        # get the current snap status to make sure it looks valid
         try:
             snap_stat = snapshot_status(snap)
         except Exception:
@@ -188,13 +211,14 @@ def background_processor():
             try:
                 snapshots = snap.cluster_obj.call_api(method="snapshot_upload",
                                                  parms={'file_system': snap.fsname, 'snapshot': snap.snapname})
+                # snapshots = {'extra': None, 'locator': '2561d133/d/s/28/spec/6ff5-4523-adfe-9255e506de76'}
             except Exception as exc:
                 log.error(f"error uploading snapshot {snap.fsname}/{snap.snapname}: {exc}")
                 intent_log.put_record(snap.uuid, snap.fsname, snap.snapname, "upload", "error")
                 return  # skip the rest for this one
 
             # log that it's been told to upload
-            log.debug(f"snapshots = {snapshots}")   # ***vince - check the return to make sure it's been told to upload
+           # log.debug(f"snapshots = {snapshots}")   # ***vince - check the return to make sure it's been told to upload
 
             log.info(f"uploading snapshot {snap.fsname}/{snap.snapname}")
             intent_log.put_record(snap.uuid, snap.fsname, snap.snapname, "upload", "in-progress")
@@ -209,9 +233,10 @@ def background_processor():
         # otherwise, it should be uploading, so we fall through and monitor it
 
         # monitor progress - we have to wait for this one to complete before uploading another
-        upload_complete = False
+        sleeptime = 5
+        loopcount = 0
         while True:
-            time.sleep(5)  # give it some time to upload, check in every 5s
+            time.sleep(sleeptime)  # give it some time to upload, check in every 5s
             # get snap info via api
             try:
                 this_snap = snapshot_status(snap)
@@ -219,8 +244,14 @@ def background_processor():
                 log.error(f"error listing snapshots: checking status")
                 return
 
+            # track how many times we're checking the status
+            loopcount += 1
+
             if this_snap is not None:
                 if this_snap["stowStatus"] == "UPLOADING":
+                    progress = int(this_snap['objectProgress'][:-1])   # progress is something like "33%"
+                    # reduce log spam - seems to hang under 50% for a while
+                    sleeptime = sleeptimer(loopcount, progress)
                     log.debug(
                         f"upload of {snap.fsname}/{snap.snapname} in progress: {this_snap['objectProgress']} complete")
                     continue
@@ -233,7 +264,7 @@ def background_processor():
                     log.error(
                         f"upload status of {snap.fsname}/{snap.snapname} is {this_snap['stowStatus']}/" +
                         "{this_snap['objectProgress']}?")
-                    continue
+                    return  # prevent infinite loop
             else:
                 log.error(f"no snap status for {snap.fsname}/{snap.snapname}?")
                 return
@@ -268,8 +299,10 @@ def background_processor():
         snaplog.info(f"Delete Initiated:{snap.fsname}:{snap.snapname}:{locator}")
 
         # delete may take some time, particularly if uploaded to obj and it's big
-        time.sleep(0.1)  # give just a little time, just in case it's instant
+        time.sleep(1)  # give just a little time, just in case it's instant
         delete_complete = False
+        sleeptime = 5
+        loopcount = 0
         while not delete_complete:
             # if may happen quickly, so sleep at the end of the cycle
             try:
@@ -287,8 +320,14 @@ def background_processor():
                 snaplog.info(f"Delete complete:{snap.fsname}:{snap.snapname}:{locator}")
                 return
             #log.debug(f"this_snap is {this_snap}")
+            # track how many times we're checking the status
+            progress = int(this_snap['objectProgress'][:-1])  # progress is something like "33%"
+            loopcount += 1
 
-            time.sleep(5)  # give it some time to delete, check in every 5s
+            # reduce log spam - seems to hang under 50% for a while
+            sleeptime = sleeptimer(loopcount, progress)
+
+            time.sleep(sleeptime)  # give it some time to delete, check in every 5s
 
 
     """
