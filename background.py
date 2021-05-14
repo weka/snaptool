@@ -267,7 +267,7 @@ def background_processor():
                     progress = int(this_snap['objectProgress'][:-1])   # progress is something like "33%"
                     # reduce log spam - seems to hang under 50% for a while
                     sleeptime = sleeptimer(loopcount, progress)
-                    log.debug(
+                    log.info(
                         f"upload of {snap.fsname}/{snap.snapname} in progress: {this_snap['objectProgress']} complete")
                     continue
                 elif this_snap["stowStatus"] == "SYNCHRONIZED":
@@ -316,7 +316,7 @@ def background_processor():
         # delete may take some time, particularly if uploaded to obj and it's big
         time.sleep(1)  # give just a little time, just in case it's instant
         delete_complete = False
-        sleeptime = 5
+        sleeptime = 5.0
         loopcount = 0
         while not delete_complete:
             # if may happen quickly, so sleep at the end of the cycle
@@ -338,6 +338,8 @@ def background_processor():
             # track how many times we're checking the status
             progress = int(this_snap['objectProgress'][:-1])  # progress is something like "33%"
             loopcount += 1
+            log.info(
+                f"delete of {snap.fsname}/{snap.snapname} in progress: {this_snap['objectProgress']} complete")
 
             # reduce log spam - seems to hang under 50% for a while
             sleeptime = sleeptimer(loopcount, progress)
