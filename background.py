@@ -179,12 +179,16 @@ def background_processor():
                 return 30.0   # if not progressing, sleep longer
             elif progress > 80:
                 return 10.0
+            else:
+                return 20.0
 
         if loopcount > 10:
             if progress < 50:
                 return 20.0   # if not progressing, sleep longer
             elif progress > 80:
                 return 10.0
+            else:
+                return 15.0
 
         if loopcount > 5:
             if progress < 50:
