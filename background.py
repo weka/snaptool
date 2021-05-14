@@ -174,7 +174,15 @@ def background_processor():
 
     # sleeptimer will increase sleep time so we don't spam the logs
     def sleeptimer(loopcount, progress):
-        if loopcount > 20:
+        if loopcount > 12:
+            if progress < 50:
+                return 60.0   # if not progressing, sleep longer
+            elif progress > 80:
+                return 10.0
+            else:
+                return 30.0
+
+        if loopcount > 9:
             if progress < 50:
                 return 30.0   # if not progressing, sleep longer
             elif progress > 80:
@@ -182,7 +190,7 @@ def background_processor():
             else:
                 return 20.0
 
-        if loopcount > 10:
+        if loopcount > 6:
             if progress < 50:
                 return 20.0   # if not progressing, sleep longer
             elif progress > 80:
@@ -190,7 +198,7 @@ def background_processor():
             else:
                 return 15.0
 
-        if loopcount > 5:
+        if loopcount > 3:
             if progress < 50:
                 return 10.0   # if not progressing, sleep longer
             else:
