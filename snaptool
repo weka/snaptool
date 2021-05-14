@@ -30,6 +30,7 @@ log = logging.getLogger()
 #rootlogger = logging.getLogger()
 #log = logging.getLogger(__name__)  # module log
 snaplog = logging.getLogger("snapshot") # snapshot log (a file, set below)
+snaplog.propagate = False
 
 config_file_format = {
     'monthly': {
@@ -83,6 +84,7 @@ def snapd_call_api(cluster, method, parms):
 
 def setup_logging():
     FORMAT = "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
+    TIMEFORMAT = "%(asctime)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
     # create handler to log to syslog
     print(f"setting syslog on {platform.platform()}")
     if platform.platform()[:5] == "macOS":
@@ -94,7 +96,7 @@ def setup_logging():
 
     # create handler to log to stderr
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter(FORMAT))
+    console_handler.setFormatter(logging.Formatter(TIMEFORMAT))
 
     # add handlers to root logger
     if syslog_handler is not None:
