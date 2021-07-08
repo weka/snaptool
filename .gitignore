@@ -8,3 +8,9 @@ prometheus_data/*
 .*.swp
 etc_alertmanager/alertmanager.yml
 var_lib_grafana/grafana.db
+snapshots.py.bak
+snaptool-example.yml
+snaptool.bak
+snaptool.log
+snaptool.yml.bak
+upload_intent.log
