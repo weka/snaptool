@@ -21,10 +21,18 @@
 # interval: has no default, must be provided for interval snaps to happen
 #
 #
+cluster:
+   auth_token_file: ~/auth-token.json
+   hosts: vweka1,vweka2,vweka3
+   force_https: True   # only 3.10+ clusters support https
+   verify_cert: False  # default cert cannot be verified
+
 filesystems:
-   bsnap01: everyday-8am-r4, every15m-Mon-Fri-r4, mondays-7am-r3, every5m-r5
-   bsnap02: everyhour-r8, every5m-r5
-   bsnap03: every2m-r2, default
+   b01: fridays-4pm, daily-8am, wkdays-hourly-9-5, every15m-Mon-Fri, every5m, sat-sun-noon
+   bs02: fridays-4pm, wkdays-hourly-9-5, every5m, sat-sun-noon
+   bsn03: default, every2m, sat-sun-noon, sat-sun-interval
+   bsna04: default, every15m-Mon-Fri, sat-sun-noon, sat-sun-interval
+
 schedules:
    default:
       monthly:
@@ -44,33 +52,30 @@ schedules:
          every: Mon,Tue,Wed,Thu,Fri
          retain: 10
          interval: 60
-         at: 9:05am
+         at: 9:00am
          until: 5pm
-   every5m-r5:
+   every5m:
       every: day
       interval: 5
-      retain: 5
+      retain: 6
       at: 9am
-   every2m-r2:
+   every2m:
       every: day
       interval: 2
-      retain: 2
+      retain: 5
       at: 9am
-   everyhour-r8:
+   wkdays-hourly-9-5:
       every: Mon,Tue,Wed,Thu,Fri
       retain: 8
       at: 0900
       until: 5pm
       interval: 60
-   every6months:
-      every: Jan,Jul
-      retain: 2
    every3months:
       every: Jan,Apr,Jul,Oct
       retain: 3
       at: 6am
       day: 31
-   everyday-8am-r4:
+   daily-8am:
       every: day
       retain: 4
       at: 8am
@@ -86,53 +91,31 @@ schedules:
          retain: 3
          at: 9am
          upload: no
-   every15m-Mon-Fri-r4:
+   every15m-Mon-Fri:
       every: Mon,Tue,Wed,Thu,Fri
       retain: 4
       interval: 15
       at: 0905
       until: 5pm
       upload: no
-   weekdayschedupload:
+   wkdays-hrly-upload:
       every: Mon,Tue,Wed,Thu,Fri
       retain: 8
-      interval: 15
-      at: 0905
+      interval: 60
+      at: 0900
       until: 5pm
       upload: yes
-   schedule_1:
-      monthly:
-         every: month
-         retain: 3
-         day: 1
-         at: 1:15am
-      mondays:
-         every: Mon
-         retain: 2
-         at: 7am
-      Tue-Fri:
-         every: Tue,Wed,Thu,Fri
-         retain: 1
-         at: 7am
-         
-#   this can be done with just Mon in list of days
-#   weeklyonmonday1:
-#      retain: 3
-#      every: week
-#      day: Mon
-#      at: 6am
-   mondays-7am-r3:
-      every: Mon
-      retain: 3
-      at: 7am
-   mondays-6am-r2:
-      every: Mon
-      retain: 2 
+   fridays-4pm:
+      every: Fri
+      retain: 4
+      at: 4pm
+   sat-sun-noon:
+      every: Sat,Sun
+      retain: 4
+      at: 1200
+   sat-sun-interval:
+      every: Sat,Sun
+      retain: 24
       at: 6am
-   MonWed_15m_9_5:
-      every: Mon,Tue
-      at: 9:03am
-      interval: 15
-      until: 5pm
-      retain: 3
+      interval: 120
 

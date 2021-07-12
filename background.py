@@ -231,7 +231,7 @@ def background_processor():
             try:
                 snaps = snapobj.cluster.call_api(method="snapshot_upload",
                                                  parms={'file_system': snapobj.fsname, 'snapshot': snapobj.snapname})
-                # snapshots = {'extra': None, 'locator': '2561d133/d/s/28/spec/6ff5-4523-adfe-9255e506de76'}
+                # snaps = {'extra': None, 'locator': '2561d133/d/s/28/spec/6ff5-4523-adfe-9255e506de76'}
             except Exception as exc:
                 log.error(f"error uploading snapshot {snapobj.fsname}/{snapobj.snapname}: {exc}")
                 intent_log.put_record(snapobj.uuid, snapobj.fsname, snapobj.snapname, "upload", "error")
@@ -290,7 +290,7 @@ def background_processor():
                 return
 
     def delete_snap(snapobj):
-        log.debug(f"deleting snap {snapobj.fsname}/{snapobj.snapname}")
+        log.info(f"Deleting snap {snapobj.fsname}/{snapobj.snapname}")
         # maybe do a snap_status() so we know if it has an object locator and can reference the locator later?
         try:
             status = snapshot_status(snapobj)
@@ -301,7 +301,7 @@ def background_processor():
         if status is None:
             # already gone? make sure it shows that way in the logs
             intent_log.put_record(snapobj.uuid, snapobj.fsname, snapobj.snapname, "delete", "complete")
-            log.info(f"snap {snapobj.fsname}/{snapobj.snapname} was deleted already")
+            log.info(f"Snap {snapobj.fsname}/{snapobj.snapname} was deleted already")
             return
         else:
             locator = status['locator']
@@ -310,13 +310,13 @@ def background_processor():
             # ask cluster to delete the snap
             result = snapobj.cluster.call_api(method="snapshot_delete",
                                               parms={"file_system": snapobj.fsname, "name": snapobj.snapname})
-            log.debug(f"delete result: {result}")
-            log.info(f"snap {snapobj.fsname}/{snapobj.snapname} delete initiated")
+            log.debug(f"Delete result: {result}")
+            log.debug(f"Snap {snapobj.fsname}/{snapobj.snapname} delete initiated")
         except Exception as exc:
-            log.error(f"error deleting snapshot {snapobj.snapname} from filesystem {snapobj.fsname}: {exc}")
+            log.error(f"Error deleting snapshot {snapobj.snapname} from filesystem {snapobj.fsname}: {exc}")
 
         intent_log.put_record(snapobj.uuid, snapobj.fsname, snapobj.snapname, "delete", "in-progress")
-        snaplog.info(f"Delete Initiated:{snapobj.fsname}/{snapobj.snapname}:{locator}")
+        snaplog.debug(f"Delete Initiated:{snapobj.fsname}/{snapobj.snapname}:{locator}")
 
         # delete may take some time, particularly if uploaded to obj and it's big
         time.sleep(1)  # give just a little time, just in case it's instant
@@ -328,29 +328,29 @@ def background_processor():
             except Exception as exc:
                 # when the snap no longer exists, we get a None back, so this is an error
                 # log.debug(f"snap delete raised exception")
-                log.error(f"error listing snapshots: checking status: {exc}")
+                log.error(f"Error listing snapshots: checking status: {exc}")
                 return
 
             # when the snap no longer exists, we get a None from snap_status()
             if this_snap is None:
                 intent_log.put_record(snapobj.uuid, snapobj.fsname, snapobj.snapname, "delete", "complete")
-                log.info(f"snap {snapobj.fsname}/{snapobj.snapname} sucessfully deleted")
-                snaplog.info(f"Delete complete:{snapobj.fsname}:{snapobj.snapname}:{locator}")
+                log.debug(f"Snap {snapobj.fsname}/{snapobj.snapname} sucessfully deleted")
+                snaplog.info(f"   Delete complete:{snapobj.fsname}/{snapobj.snapname}:{locator}")
                 return
             # track how many times we're checking the status
             loopcount += 1
             if this_snap['objectProgress'] == 'N/A' and this_snap['stowStatus'] == "NONE":   # wasn't uploaded.
-                log.info(f"delete_snap: snap {snapobj.fsname}/{snapobj.snapname} wasn't uploaded (stowStatus NONE)")
+                log.debug(f"delete_snap: snap {snapobj.fsname}/{snapobj.snapname} wasn't uploaded (stowStatus NONE)")
                 progress = -1
             else:
                 progress = int(this_snap['objectProgress'][:-1])  # progress is something like "33%", remove last char
-            log.info(f"delete of {snapobj.fsname}/{snapobj.snapname} progress: {this_snap['objectProgress']}")
+            log.info(f"   Delete of {snapobj.fsname}/{snapobj.snapname} progress: {this_snap['objectProgress']}")
 
             # reduce log spam - seems to hang under 50% for a while (only if it was uploaded)
             if progress >= 0:
                 sleeptime = sleep_time(loopcount, progress)
             else:
-                sleeptime = 5
+                sleeptime = 2
 
             time.sleep(sleeptime)  # give it some time to delete, check in every 5s or possibly longer if was uploaded
 
@@ -378,7 +378,7 @@ def background_processor():
 
     main_thread = threading.main_thread()
 
-    time.sleep(30)  # delay start until something happens.  ;)
+    time.sleep(10)  # delay start until something happens.  ;)
     log.info("background_uploader starting...")
 
     while True:

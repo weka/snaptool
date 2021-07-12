@@ -100,6 +100,48 @@ def set_logging_levels(snaptool_level, snapshots_level=logging.ERROR,
     logging.getLogger("background").setLevel(background_level)
     logging.getLogger("snapshots").setLevel(snapshots_level)
 
+class ClusterConnection(object):
+    def __init__(self, cluster, clusterspec, authfile, force_https, cert_check):
+        self.weka_cluster = cluster    # previous connection
+        self.clusterspec = clusterspec
+        self.authfile = authfile
+        self.force_https = force_https
+        self.verify_cert = cert_check
+        self.connect_time = datetime.datetime.min
+
+    def connect(self):
+        self.weka_cluster = wekacluster.WekaCluster(self.clusterspec, self.authfile,
+                                                    force_https=self.force_https, verify_cert=self.verify_cert)
+        self.connect_time = time.time()
+        return self.weka_cluster
+
+    def call_weka_api(self, method, parms):
+        exc = None
+        max_retries = 10
+        for i in range(max_retries):
+            try:
+                result = self.weka_cluster.call_api(method=method, parms=parms)
+                return result
+            except wekalib.exceptions.APIError as exc:
+                errmsg = f"{exc}"
+                log.warning(f"wekalib exception for ('{method}', {parms}):")
+                log.warning(f"        wekalib message: '{exc}'")
+                if method == "snapshot_create":
+                    if errmsg == "name already exists":
+                        return None
+                #  could re-read config here in case filesystem name changed, or other config fixed/changed?
+                time.sleep(5)
+                self.connect()
+                i += 1
+                continue
+        raise exc
+
+    def check_cluster_connection(self):
+        result = self.call_weka_api('status', {})
+        log.debug(f"Cluster connected: {self.weka_cluster} iostatus: {result['io_status']}")
+        return True
+
+
 class ScheduleGroup(object):
     def __str__(self):
         return f"(Group {self.name}: {len(self.entries)} entries; filesystems: {self.filesystems})"
@@ -125,16 +167,70 @@ def config_syntax_error(args, message):
     sys.exit(1)
 
 def syntax_check_top_level(args, config):
-    if 'filesystems' not in config:
-        config_syntax_error(args, "'filesystems' key not found")
-    if 'schedules' not in config:
-        config_syntax_error(args, "'schedules' key not found")
-    if len(config) != 2:
-        config_syntax_error(args, "there must be 2 top level keys in {args.configfilename}: filesystems and schedules")
+    msg = ''
+    if 'cluster' in config:
+        msg += "'cluster' found "
+    else:
+        msg += "optional 'cluster' not found. "
+    if 'filesystems' in config:
+        msg += f"'filesystems' found. "
+        fs_found = True
+    else:
+        msg += f"'filesystems' not found. "
+        fs_found = False
+    if 'schedules' in config:
+        msg += f"'schedules' found. "
+        s_found = True
+    else:
+        msg += f"'schedules' not found. "
+        s_found = False
+    log.info(f"Config parse: {msg}")
+    if s_found and fs_found:
+        log.info(f"Config top level check ok. {msg}")
+    else:
+        config_syntax_error(args, msg)
 
-def config_parse(config, args):
+def parse_bool(boolstr):
+    if str(boolstr).lower() in ["yes", "true", "1"]:
+        return True
+    elif str(boolstr).lower() in ["no", "false", "0"]:
+        return False
+    else:
+        log.error(f"Invalid boolean specification, should be 'yes', 'no', 'true' or 'false': {boolstr} in config file")
+        sys.exit(1)
+
+def create_cluster_connection(config, args):
+    # returns a cluster connection object
+    clusteryaml = config['cluster']
+    if args.clusterspec is not None:
+        clusterspec = args.clusterspec
+    elif 'hosts' in clusteryaml:
+        clusterspec = clusteryaml['hosts']
+    else:
+        log.error(f"A clusterspec is required in the config file or by command line")
+        sys.exit(1)
+    if args.authfile is not None:
+        authfile = args.authfile
+    elif 'auth_token_file' in clusteryaml:
+        authfile = clusteryaml['auth_token_file']
+    else:
+        log.info(f"No auth file specified, trying auth-token.json")
+        authfile = "auth-token.json"
+    if 'force_https' in clusteryaml:
+        force_https = parse_bool(clusteryaml['force_https'])
+    else:
+        force_https = False
+    if 'verify_cert' in clusteryaml:
+        verify_cert = parse_bool(clusteryaml['verify_cert'])
+    else:
+        verify_cert = True
+    result = ClusterConnection(None, clusterspec, authfile, force_https, verify_cert)
+    return result
+
+def config_parse_fs_scheds(config, args):
     resultsdict = {}
     syntax_check_top_level(args, config)
+
     filesystems = config['filesystems']
     schedules = config['schedules']
     snap_log.debug(f"JSON filesystems: {filesystems}")
@@ -166,9 +262,9 @@ def parse_snaptool_args():
     argparser.add_argument("-c", "--configfile", dest='configfile', default="./snaptool.yml",
                            help="override ./snaptool.yml as config file")
     argparser.add_argument("-p", "--port", dest='port', default="13999", help="TCP port number to listen on")
-    argparser.add_argument("clusterspec", default="localhost", help="Cluster specification.  <host>,<host>")
+    argparser.add_argument("clusterspec", default=None, help="Cluster specification.  <host>,<host>", nargs='?')
     argparser.add_argument("--auth-file", dest='authfile',
-                           default="~/auth-token.json", help="Cluster authentication token file")
+                           default=None, help="Cluster authentication token file")
     argparser.add_argument("-v", "--verbosity", action="count", default=0, help="increase output verbosity")
     argparser.add_argument("--version", dest="version", default=False, action="store_true",
                            help="Display version number")
@@ -187,28 +283,39 @@ def parse_snaptool_args():
     else:
         loglevel = logging.DEBUG
 
+    # allow cluster spec backward compatibility (ex: host1,host2,host3:~/auth-token.json)
+    if args.clusterspec is not None:
+        clusterspeclist = args.clusterspec.split(":")
+        args.clusterspec = clusterspeclist[0]
+        if len(clusterspeclist) > 1:
+            args.authfile = clusterspeclist[1]
+
     return args, loglevel
 
 def update_snaptimes_sort_and_clean(snapgrouplist, now_dt):
     unused_list = []
-    snap_log.info(f"schedule groups before unused check: {len(snapgrouplist)}")
+    snap_log.debug(f"schedule groups before unused check: {len(snapgrouplist)}")
     for sg in snapgrouplist:
         if len(sg.filesystems) == 0:
-            snap_log.warning(f"unused schedule {sg.name}, ignoring")
             unused_list.append(sg)
+    snap_log.warning(f"Unused schedules: {[s.name for s in unused_list]}")
     for sg in unused_list:
         snapgrouplist.remove(sg)
-    snap_log.info(f"schedule groups after unused check: {len(snapgrouplist)}")
+    snap_log.debug(f"schedule groups after unused check:"
+                   f" {len(snapgrouplist)} {[(s.name, s.filesystems) for s in snapgrouplist]}")
     # update snaptimes in entries and in SnapGroups, and sort
     for sg in snapgrouplist:
         for entry in sg.entries:
             entry.calc_next_snaptime(now_dt)
         sg.entries.sort(key=attrgetter('nextsnap_dt', 'sort_priority', 'no_upload'))
+        log.debug(f"Sorted entries for {sg.name} fs: {sg.filesystems} entries: {[e.sort_priority for e in sg.entries]}")
         if len(sg.entries) > 0:
             sg.next_snap_time = sg.entries[0].nextsnap_dt
             sg.sort_priority = sg.entries[0].sort_priority
             sg.no_upload = sg.entries[0].no_upload
     snapgrouplist.sort(key=attrgetter('next_snap_time', 'sort_priority', 'no_upload'))
+    snap_log.info(f"schedule groups after sort:"
+                  f" {len(snapgrouplist)} {[(s.name, str(s.next_snap_time), s.filesystems) for s in snapgrouplist]}")
 
 def log_snapgrouplist(snapgroup_list):
     for sg in snapgroup_list:
@@ -226,14 +333,14 @@ def get_snapgroups_for_snaptime(snapgroup_list, snaptime):
 def get_snaps_dict_by_fs(snapgroups_for_nextsnap, next_snap_time):
     results = {}
     for sg in snapgroups_for_nextsnap:
-        snap_log.info(f"   sg {sg.name}, sg.filesystems: {sg.filesystems}")
+        snap_log.debug(f"  snapgroup '{sg.name}' filesystems: {sg.filesystems}")
         for fs in sg.filesystems:
             if fs not in results:
-                snap_log.info(f"        {sg.name} {sg.entries[0].name} will snap {fs} at {next_snap_time} ")
+                snap_log.debug(f"        {sg.name} {sg.entries[0].name} will snap {fs} at {next_snap_time} ")
                 results[fs] = sg.entries[0]
             else:
-                snap_log.info(f"        conflicting snap of {fs} ignored")
-    snap_log.info(f"get_snaps_dict_by_fs: {len(results)} entries; filesystems: {list(results.keys())}")
+                snap_log.debug(f"        conflicting snap of {fs} ignored")
+    snap_log.debug(f"filesystems: {list(results.keys())} - {len(results)} entries")
     return results
 
 def next_snaps(parsed_schedules_dict):
@@ -242,27 +349,24 @@ def next_snaps(parsed_schedules_dict):
     log_snapgrouplist(sg_list)
     next_snap_time = sg_list[0].entries[0].nextsnap_dt    # because it's sorted this works
     snapgroups_for_nextsnap = get_snapgroups_for_snaptime(sg_list, next_snap_time)
-    snap_log.info(f"snap groups for next snap: {len(snapgroups_for_nextsnap)} entries for {next_snap_time}")
+    snap_log.debug(f"next snap time: {next_snap_time}, {len(snapgroups_for_nextsnap)} snaps")
     return next_snap_time, get_snaps_dict_by_fs(snapgroups_for_nextsnap, next_snap_time)
 
 def get_snapshots(cluster):
-    try:
-        snapshot_list = cluster.call_api(method="snapshots_list", parms={})
-    except Exception as exc:
-        log.error(f"Error collecting snapshot list: {exc}")
-        snapshot_list = []
-        # sys.exit(1)
+    snapshot_list = cluster.call_weka_api("snapshots_list", {})
     return snapshot_list
 
 def create_snapshot(cluster, fs, name, access_point_name):
     try:
-        created_snap = cluster.call_api(method="snapshot_create", parms={
+        created_snap = cluster.call_weka_api(method="snapshot_create", parms={
             "file_system": fs,
             "name": name,
             "access_point": access_point_name,
             "is_writable": False})
-        log.info(f"snap {name} has been created on fs {fs}: {created_snap}")
-    # needs error-checking
+        if created_snap is None:
+            log.info(f"   snap {fs}/{name} already exists")
+        else:
+            log.info(f"   snap {fs}/{name} created")
     except Exception as exc:
         log.error(f"Error creating snapshot {name} on filesystem {fs}: {exc}")
 
@@ -291,8 +395,8 @@ def delete_old_snaps(cluster, parsed_schedules_dict):
                     num_to_delete = len(snaps) - entry.retain
                     snaps_to_delete = snaps[:num_to_delete]
                     for s in snaps_to_delete:
-                        log.info(f"Queueing fs {fs}/{s['name']} for delete")
-                        background.QueueOperation(cluster, fs, s['name'], "delete")
+                        log.info(f"Queueing fs/snap: {fs}/{s['name']} for delete")
+                        background.QueueOperation(cluster.weka_cluster, fs, s['name'], "delete")
 
 
 def create_new_snaps(cluster, snaps_taken_dict, next_snap_time):
@@ -302,36 +406,24 @@ def create_new_snaps(cluster, snaps_taken_dict, next_snap_time):
         # don't need century, or date at all really, because snap creation time is used for delete, comparisons
         # date in the name is really for convenience in displays
         next_snap_name = snap.name + "." + next_snap_time.strftime("%y%m%d%H%M")
-        log.info(f"next_snap_name:{next_snap_name} (len={len(next_snap_name)}), access_point_name:{access_point_name}")
+        log.info(f"Creating fs/snap {fs}/{next_snap_name} (name len={len(next_snap_name)})")
         create_snapshot(cluster, fs, next_snap_name, access_point_name)
 
-def check_cluster_connection(cluster):
-    try:
-        result = cluster.call_api(method='status', parms={})
-    except wekalib.exceptions.APIError as exc:
-        log.error(f"Cluster connection check failure: {cluster} - {exc}")
-        return False
-    log.debug(f"Cluster connected: {cluster} iostatus: {result['io_status']}")
-    return True
-
-def get_cluster_connection(clusterspec, authfile, cluster=None):
-    if cluster and check_cluster_connection(cluster):
-        return cluster
-    else:
-        cluster = wekacluster.WekaCluster(clusterspec, authfile)
-        if check_cluster_connection(cluster):
-            return cluster
-        else:
-            raise wekalib.exceptions.NewConnectionError(f"Couldn't connect to cluster {clusterspec}, {authfile}")
-
-def refresh_cluster_connection(clusterspec, authfile, cluster):
-    return get_cluster_connection(clusterspec, authfile, cluster)
 
 def get_configfile_config(filename):
     with open(filename, 'r') as f:
         config = yaml.load(stream=f, Loader=yaml.BaseLoader)
     snap_log.debug(config)
     return config
+
+def connection_info_changed(existing_connection, new_connection):
+    if (existing_connection.authfile != new_connection.authfile or
+            existing_connection.clusterspec != new_connection.clusterspec or
+            existing_connection.force_https != new_connection.force_https or
+            existing_connection.verify_cert != new_connection.verify_cert):
+        return True
+    else:
+        return False
 
 def main():
     # handle signals (ie: ^C and such)
@@ -346,54 +438,49 @@ def main():
         snapshots.run_schedule_tests()
 
     config = get_configfile_config(args.configfile)
-    schedules_dict = config_parse(config, args)
-
+    schedules_dict = config_parse_fs_scheds(config, args)
     log.info("Trying to create cluster connection...")
-    cluster = get_cluster_connection(args.clusterspec, args.authfile)
+    cluster_connection = create_cluster_connection(config, args)
+    cluster_connection.connect()
 
     log.warning("Replaying background operation intent log...")
-    background.intent_log.replay(cluster)
+    background.intent_log.replay(cluster_connection.weka_cluster)
 
     # do this once at beginning so we don't wait for next snap time to clean up anything missed from previous runs
     # depending on timing, may end up with "already deleted" messages in logs
-    delete_old_snaps(cluster, schedules_dict)
+    delete_old_snaps(cluster_connection, schedules_dict)
 
-    reload_interval = 600
-    force_reconnect_interval = 3600
+    reload_interval = 300
     last_reload_time = time.time()
-    last_reconnect_time = time.time()
 
     while True:
         if (time.time() - last_reload_time) > reload_interval:
-            log.info(f"Reloading configuration file {args.configfile}")
+            log.info(f"--------------- Reloading configuration file {args.configfile}")
             config = get_configfile_config(args.configfile)
-            schedules_dict = config_parse(config, args)
-            log.info(f"Confirming cluster connection...")
-            if not check_cluster_connection(cluster):
-                cluster = refresh_cluster_connection(args.clusterspec, args.authfile, cluster)
+            schedules_dict = config_parse_fs_scheds(config, args)
+            new_connection = create_cluster_connection(config, args)
+            if connection_info_changed(cluster_connection, new_connection):
+                log.info(f"-------------------- Reconnecting with different cluster configuration...")
+                new_connection.connect()
+                cluster_connection = new_connection
             last_reload_time = time.time()
-        if (time.time() - last_reconnect_time) > force_reconnect_interval:
-            log.info(f"Reconnecting to cluster due to force_reconnect interval {force_reconnect_interval}")
-            cluster = get_cluster_connection(args.clusterspec, args.authfile)
-            last_reconnect_time = time.time()
 
         next_snap_time, next_snaps_dict = next_snaps(schedules_dict)
-        sleep_time = math.floor((next_snap_time - now()).total_seconds())
-        fs_msg_str = f"{ {fs: str(s) for fs, s in next_snaps_dict.items()} }"
+        sleep_time = round((next_snap_time - now()).total_seconds(), 1)
+        fs_msg_str = f"{ {fs:s.name for fs, s in next_snaps_dict.items()} }"
         if sleep_time <= 0:
-            sleep_msg = f"No need to sleep, snap now ({next_snap_time}): {fs_msg_str}"
+            sleep_msg = f"Snap now: ({next_snap_time}): {fs_msg_str}"
             sleep_time = 0
         else:
-            sleep_msg = f"Sleep until {next_snap_time}, ({sleep_time} seconds), then snap: {fs_msg_str}"
-
+            sleep_msg = f"Sleep until {next_snap_time} ({sleep_time}s), then snap: {fs_msg_str}"
         log.info(sleep_msg)
         time.sleep(sleep_time)
 
-        create_new_snaps(cluster, next_snaps_dict, next_snap_time)
-        delete_old_snaps(cluster, schedules_dict)
+        create_new_snaps(cluster_connection, next_snaps_dict, next_snap_time)
+        delete_old_snaps(cluster_connection, schedules_dict)
 
         # prevent same snap attempts from running again in the same minute
-        sleep_time = 60 - math.floor((now() - next_snap_time).total_seconds())
+        sleep_time = 60 - round((now() - next_snap_time).total_seconds(), 1)
         if sleep_time > 0:
             log.info(f"Sleeping for {sleep_time} seconds before next loop")
             time.sleep(sleep_time)
