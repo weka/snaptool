@@ -1,26 +1,40 @@
 #
 # every: 'month' | 'day' | list of months | list of days
-#     'day' or list of days requires at: <time> or interval: <number of minutes>
-#         at: and interval: 
-#             at: defaults to 0000, format accepts times like "9am", "9:15am" "2300" etc
-#             if interval: is not provided, single snapshot per day is taken at "at:"
-#             if interval: is provided - uses at: and until: for time range
-#                 interval: number of minutes between snaps
-#                 range (at: - until:) default to 0000 and 2359
-#                 first snap is taken at at: then every <interval:> minutes until until: is reached
-#     month or list of months - uses at: <time> and day: <day of month 1-31>
-#         day: defaults to 1 
-#         at: defaults to midnight (0000) - time of the snap taken on day:
-#         if day of month is > number of days in a month, last day of the month is used 
-#             e.g. 31 will snap on the last day of every month
-# 
+#     if 'month' or list of months is provided:
+#         snap occurs at at: <time> on day of month specified by day: <day of month 1-31>
+#         day: defaults to 1, valid values: 1-31
+#         list of months can be full month names or 3 letter abbreviation, comma separated list
+#         if day of month is > number of days in a month, last day of the month is used
+#             e.g. 31 will snap on the last day of every listed month
+#    if 'day' or list of days is provided:
+#         snap occurs at: <time>
+#         if interval: is provided, potentially multiple snaps per day, see below
+#         list of days can be full name or 3 letter abbreviation, comma separated list
+#
+# at:
+#    first snap time of day.  Defaults to "0000" (midnight)
+#    accepts times like "9am", "9:15am" "2300" etc
 # retain:
-#     0 disables schedule, otherwise is the number of snapshots kept
-# upload: defaults to no/false - yes/true uploads to S3
+#    is the number of snapshots kept, 0 disables schedule and removes all snapshots for the schedule
+#    defaults to 4
+# interval:
+#    if interval: is not provided, single snapshot per day is taken at time specified by "at:"
+#    if interval: is provided - uses at: and until: for time range of snaps
+#       interval: is the number of minutes between snaps
+#       first snap is taken at at: then every <interval:> minutes until until: is reached
+# until:
+#    only used when interval: is provided - this is the latest a snap can be taken during a day
+#    defaults to "2359"
+# day:
+#    only used for 'month' or list of months, the day number of the month (1-31)
+# upload:
+#    defaults to no/False - yes/True uploads to object store
 #
-# interval: has no default, must be provided for interval snaps to happen
+# note that if multiple schedules conflict for the same filesystem and scheduled minute,
+# only the schedule with the longest period between snaps will be taken
+# (e.g. interval of 60 will be taken vs 15 min.   monthly will be taken vs daily.   etc.)
 #
-#
+
 cluster:
    auth_token_file: ~/auth-token.json
    hosts: vweka1,vweka2,vweka3
@@ -64,6 +78,7 @@ schedules:
       interval: 2
       retain: 5
       at: 9am
+      upload: True
    wkdays-hourly-9-5:
       every: Mon,Tue,Wed,Thu,Fri
       retain: 8

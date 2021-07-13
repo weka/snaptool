@@ -117,21 +117,6 @@ def int_to_base_62(num: int):
         result = base_62_digits[remainder] + result
     return result
 
-
-"""
-# not used - here for reverse testing base_n_to_int
-
-def base_62_to_int(base_62_num: str):
-    result = 0
-    base = len(base_62_digits)
-    num_digits = len(base_62_num)
-    for i, c in enumerate(base_62_num):
-        result += base_62_digits.index(c)
-        if i < num_digits - 1:
-            result *= base
-    return result
-"""
-
 def get_short_unique_id():     # returns a uuid4 that has been converted to base 62
     number = uuid.uuid4().int
     result = int_to_base_62(number)
@@ -210,7 +195,7 @@ def background_processor():
                 return 10.0   # if not progressing, sleep longer
             else:
                 return 5.0    # first 25s
-        return 5.0  # default
+        return 3.0  # default
 
     def upload_snap(snapobj):
         # get the current snap status to make sure it looks valid
@@ -342,17 +327,15 @@ def background_processor():
             if this_snap['objectProgress'] == 'N/A' and this_snap['stowStatus'] == "NONE":   # wasn't uploaded.
                 log.debug(f"delete_snap: snap {snapobj.fsname}/{snapobj.snapname} wasn't uploaded (stowStatus NONE)")
                 progress = -1
-            else:
+            elif '%' in this_snap['objectProgress']:
                 progress = int(this_snap['objectProgress'][:-1])  # progress is something like "33%", remove last char
+            else:
+                progress = 0
             log.info(f"   Delete of {snapobj.fsname}/{snapobj.snapname} progress: {this_snap['objectProgress']}")
 
             # reduce log spam - seems to hang under 50% for a while (only if it was uploaded)
-            if progress >= 0:
-                sleeptime = sleep_time(loopcount, progress)
-            else:
-                sleeptime = 2
-
-            time.sleep(sleeptime)  # give it some time to delete, check in every 5s or possibly longer if was uploaded
+            sleeptime = sleep_time(loopcount, progress)
+            time.sleep(sleeptime)  # give it some time to delete, check in based on progress/loop count
 
     """
     # not using this yet (maybe never)... accesspoint_name is a little issue

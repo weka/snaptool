@@ -8,7 +8,6 @@
 
 from operator import attrgetter, itemgetter
 import sys
-import math
 import argparse
 import platform
 import time
@@ -32,29 +31,6 @@ VERSION = "0.11.0"
 log = logging.getLogger()
 log.setLevel(logging.INFO)  # to start
 snap_log = logging.getLogger(__name__)  # snaptool log (a file, set below)
-
-
-"""
-# cluster.refresh_config() doesn't exist.   Don't use this function for now
-# check with Vince.  Looks like refresh_config() was part of the wekacluster before
-def cluster_call_api(cluster, method, parms):
-    num_errors = 0
-    while True:
-        # api only fails under extreme circumstances
-        try:
-            api_return = cluster.call_api(method=method, parms=parms)
-            return api_return
-        # except APIException as exc:
-        except Exception as exc:
-            num_errors += 1
-            log.error(
-                f"Error {exc} while executing API method {method}; "
-                f"attempting to re-establish communications (retry {num_errors})")
-            if num_errors > 10:  # give up
-                raise
-            time.sleep(5)  # give the cluster some time to resolve it's issues
-            cluster.refresh_config()  # will try to re-establish communications
-"""
 
 def now():
     return datetime.datetime.now()
@@ -101,8 +77,8 @@ def set_logging_levels(snaptool_level, snapshots_level=logging.ERROR,
     logging.getLogger("snapshots").setLevel(snapshots_level)
 
 class ClusterConnection(object):
-    def __init__(self, cluster, clusterspec, authfile, force_https, cert_check):
-        self.weka_cluster = cluster    # previous connection
+    def __init__(self, clusterspec, authfile, force_https, cert_check):
+        self.weka_cluster = None
         self.clusterspec = clusterspec
         self.authfile = authfile
         self.force_https = force_https
@@ -117,21 +93,28 @@ class ClusterConnection(object):
 
     def call_weka_api(self, method, parms):
         exc = None
-        max_retries = 10
+        max_retries = 20
+        sleep_wait = 5
         for i in range(max_retries):
             try:
                 result = self.weka_cluster.call_api(method=method, parms=parms)
                 return result
             except wekalib.exceptions.APIError as exc:
                 errmsg = f"{exc}"
+                errtype = type(exc).__name__
                 log.warning(f"wekalib exception for ('{method}', {parms}):")
-                log.warning(f"        wekalib message: '{exc}'")
+                log.warning(f"        wekalib message: '{errtype}: {exc}'")
                 if method == "snapshot_create":
                     if errmsg == "name already exists":
                         return None
-                #  could re-read config here in case filesystem name changed, or other config fixed/changed?
-                time.sleep(5)
-                self.connect()
+                time.sleep(sleep_wait)
+                if i > 1:  # first couple times just wait and try again.
+                    # After that, reconnect to cluster each failure, increase wait time
+                    # could re-read config here in case filesystem name or authfile changed
+                    # or other config fixed/changed?
+                    # but it will get re-read after 5 min anyway, so no?
+                    self.connect()
+                    sleep_wait = 20
                 i += 1
                 continue
         raise exc
@@ -201,7 +184,9 @@ def parse_bool(boolstr):
 
 def create_cluster_connection(config, args):
     # returns a cluster connection object
-    clusteryaml = config['cluster']
+    clusteryaml = {}
+    if 'cluster' in config:
+        clusteryaml = config['cluster']
     if args.clusterspec is not None:
         clusterspec = args.clusterspec
     elif 'hosts' in clusteryaml:
@@ -224,7 +209,7 @@ def create_cluster_connection(config, args):
         verify_cert = parse_bool(clusteryaml['verify_cert'])
     else:
         verify_cert = True
-    result = ClusterConnection(None, clusterspec, authfile, force_https, verify_cert)
+    result = ClusterConnection(clusterspec, authfile, force_https, verify_cert)
     return result
 
 def config_parse_fs_scheds(config, args):
@@ -261,8 +246,8 @@ def parse_snaptool_args():
     argparser = argparse.ArgumentParser(description="Weka Snapshot Management Daemon")
     argparser.add_argument("-c", "--configfile", dest='configfile', default="./snaptool.yml",
                            help="override ./snaptool.yml as config file")
-    argparser.add_argument("-p", "--port", dest='port', default="13999", help="TCP port number to listen on")
-    argparser.add_argument("clusterspec", default=None, help="Cluster specification.  <host>,<host>", nargs='?')
+    argparser.add_argument("clusterspec", default=None, nargs='?',
+                           help=f"Cluster specification.  <host>,<host>... or <host>,<host>...:authfile")
     argparser.add_argument("--auth-file", dest='authfile',
                            default=None, help="Cluster authentication token file")
     argparser.add_argument("-v", "--verbosity", action="count", default=0, help="increase output verbosity")
@@ -356,23 +341,40 @@ def get_snapshots(cluster):
     snapshot_list = cluster.call_weka_api("snapshots_list", {})
     return snapshot_list
 
-def create_snapshot(cluster, fs, name, access_point_name):
+def create_snapshot(cluster, fs, name, access_point_name, upload):
     try:
+        status = cluster.call_weka_api(method="snapshots_list", parms={'file_system': fs, 'name': name})
+        if len(status) == 1:
+            log.warning(f"Snapshot fs/name {fs}/{name} already exists; skipping")
+            return
         created_snap = cluster.call_weka_api(method="snapshot_create", parms={
-            "file_system": fs,
-            "name": name,
-            "access_point": access_point_name,
-            "is_writable": False})
+                "file_system": fs,
+                "name": name,
+                "access_point": access_point_name,
+                "is_writable": False})
         if created_snap is None:
             log.info(f"   snap {fs}/{name} already exists")
         else:
             log.info(f"   snap {fs}/{name} created")
+        if upload:
+            background.QueueOperation(cluster.weka_cluster, fs, name, "upload")
     except Exception as exc:
         log.error(f"Error creating snapshot {name} on filesystem {fs}: {exc}")
 
+def create_new_snaps(cluster, next_snaps_dict, next_snap_time):
+    for fs, snap in next_snaps_dict.items():
+        access_point_name = next_snap_time.astimezone(timezone.utc).strftime(
+            "@GMT-%Y.%m.%d-%H.%M.%S")  # windows format
+        # don't need century, or date at all really, because snap creation time is used for delete, comparisons
+        # date in the name is really for convenience in displays
+        next_snap_name = snap.name + "." + next_snap_time.strftime("%y%m%d%H%M")
+        log.info(f"Creating fs/snap {fs}/{next_snap_name} (name len={len(next_snap_name)})")
+        create_snapshot(cluster, fs, next_snap_name, access_point_name, snap.upload)
+
+
 def get_fs_snaps(all_snaps, fs, schedname):
     # return snaps for fs that are named <schedname>.<something>, return them sorted by creation time
-    log.info(f"Getting snaps specific to {fs} and {schedname}")
+    log.debug(f"Getting snaps specific to {fs} and {schedname}")
     snaps_for_fs = []
     for s in all_snaps:
         snap_name = s['name'].split('.')
@@ -389,25 +391,15 @@ def delete_old_snaps(cluster, parsed_schedules_dict):
     for sg in sg_list:
         for entry in sg.entries:
             for fs in sg.filesystems:
-                snaps = [s for s in all_snaps if s['name'].split(".")[0] == entry.name and s['filesystem'] == fs]
-                snaps.sort(key=itemgetter('creationTime'))
+                # snaps = [s for s in all_snaps if s['name'].split(".")[0] == entry.name and s['filesystem'] == fs]
+                snaps = get_fs_snaps(all_snaps, fs, entry.name)
+                # snaps.sort(key=itemgetter('creationTime'))
                 if len(snaps) > entry.retain:
                     num_to_delete = len(snaps) - entry.retain
                     snaps_to_delete = snaps[:num_to_delete]
                     for s in snaps_to_delete:
                         log.info(f"Queueing fs/snap: {fs}/{s['name']} for delete")
                         background.QueueOperation(cluster.weka_cluster, fs, s['name'], "delete")
-
-
-def create_new_snaps(cluster, snaps_taken_dict, next_snap_time):
-    for fs, snap in snaps_taken_dict.items():
-        access_point_name = next_snap_time.astimezone(timezone.utc).strftime(
-            "@GMT-%Y.%m.%d-%H.%M.%S")  # windows format
-        # don't need century, or date at all really, because snap creation time is used for delete, comparisons
-        # date in the name is really for convenience in displays
-        next_snap_name = snap.name + "." + next_snap_time.strftime("%y%m%d%H%M")
-        log.info(f"Creating fs/snap {fs}/{next_snap_name} (name len={len(next_snap_name)})")
-        create_snapshot(cluster, fs, next_snap_name, access_point_name)
 
 
 def get_configfile_config(filename):
@@ -426,8 +418,8 @@ def connection_info_changed(existing_connection, new_connection):
         return False
 
 def main():
-    # handle signals (ie: ^C and such)
     setup_logging_initial()
+    # handle signals (ie: ^C and such)
     signals.signal_handling()
     args, loglevel = parse_snaptool_args()
     set_logging_levels(loglevel, snapshots_level=loglevel, background_level=logging.INFO)

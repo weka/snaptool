@@ -75,8 +75,8 @@ Each shedule has the following syntax:
                         So at: + interval: should always yield a time less than until:.  Otherwise only one snap is taken.
             at: defaults to 0000 
             until: default to 2359
-            retain: 0 disables schedule, otherwise this is the number of snapshots kept.  Defaults to 1
-            upload: defaults to no/false - yes/true uploads the snapshot to the object store associated with the filesystem
+            retain: 0 disables schedule, otherwise this is the number of snapshots kept.  Defaults to 4
+            upload: defaults to no/False - yes/True uploads the snapshot to the object store associated with the filesystem
 
 
 example snaptool.yml:

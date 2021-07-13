@@ -140,7 +140,7 @@ def parse_every(every):
 
 def parse_schedulespec(schedspec, name):
     everytype, every, at, until, interval = None, None, None, None, None
-    retain = 1
+    retain = 4
     day = 1
     upload = False
     if 'every' in schedspec:
