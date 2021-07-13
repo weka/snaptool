@@ -1,0 +1,22 @@
+# Sample systemd unit file.
+[Unit]
+Description=Weka Snaptool
+Documentation=https://github.com/weka/snaptool
+After=weka-agent.service
+AssertFileIsExecutable=/usr/local/bin/snaptool   # Or wherever you choose to install snaptool
+
+[Service]
+WorkingDirectory=/usr/local/etc
+ExecStart=/usr/local/bin/snaptool -c /usr/local/etc/snaptool.yml host1,host2,host3:/root/.weka/auth-token.json
+# You should change the above line to match your environment, including naming 3 of the backends.
+
+# Let systemd restart this service always
+Restart=always
+
+# Disable timeout login and wait until process is stopped
+TimeoutStopSec=infinity
+SendSIGKILL=no
+
+[Install]
+WantedBy=multi-user.target
+
