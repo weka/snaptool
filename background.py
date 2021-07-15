@@ -45,7 +45,7 @@ class IntentLog:
         log.info(f"Replaying upload intent log")
         replay_start = time.time()
         for uuid_str, fsname, snapname, snapop in self._incomplete_records():
-            log.info(f"re-scheduling {fsname}/{snapname}")
+            log.info(f"re-scheduling {fsname}/{snapname} for {snapop}")
             QueueOperation(cluster, fsname, snapname, snapop, uuid_str=uuid_str)
         replay_elapsed_ms = round((time.time() - replay_start) * 1000, 1)
         log.warning(f"Replay intent log took {replay_elapsed_ms} ms")
@@ -387,7 +387,7 @@ def background_processor():
             log.info(f"background_processor: terminating thread")
             return
 
-        time.sleep(5)   # slow down... make sure the snap is settled.
+        time.sleep(3)   # slow down... make sure the snap is settled.
 
         if snapq_op.operation == "upload":
             upload_snap(snapq_op)   # handles it's own errors

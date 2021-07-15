@@ -1,6 +1,6 @@
 FROM alpine:latest
 
-RUN apk add --no-cache bash curl python3 py3-pip
+RUN apk add --no-cache bash curl python3 py3-pip tzdata
 
 RUN pip3 install pyyaml python-dateutil urllib3 wekalib
 
