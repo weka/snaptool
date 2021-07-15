@@ -7,6 +7,7 @@
 # updated for new scheduling - Bruce Clagett
 
 from operator import attrgetter, itemgetter
+import os
 import sys
 import argparse
 import platform
@@ -42,24 +43,27 @@ def setup_logging_initial():
 
     syslog_format = "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
     console_format = "%(asctime)s:%(levelname)7s:%(filename)s:%(lineno)s:%(funcName)s():%(message)s"
+
+    # create handler to log to stderr
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(console_format))
+
+    log.addHandler(console_handler)
+    log.info("-------------------------Program (re)start initial---------------------------")
     # create handler to log to syslog
     log.info(f"setting syslog on {platform.platform()}")
     if platform.platform()[:5] == "macOS":
         syslogaddr = "/var/run/syslog"
     else:
         syslogaddr = "/dev/log"
-    syslog_handler = logging.handlers.SysLogHandler(syslogaddr)
-    syslog_handler.setFormatter(logging.Formatter(syslog_format))
-
-    # create handler to log to stderr
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter(console_format))
-
-    # add handlers to root logger
-    if syslog_handler is not None:
-        log.addHandler(syslog_handler)
-    log.addHandler(console_handler)
-    log.info("-------------------------Program (re)start initial---------------------------")
+    if os.path.exists(syslogaddr):
+        syslog_handler = logging.handlers.SysLogHandler(syslogaddr)
+        syslog_handler.setFormatter(logging.Formatter(syslog_format))
+        # add handlers to root logger
+        if syslog_handler is not None:
+            log.addHandler(syslog_handler)
+    else:
+        log.info(f"{syslogaddr} not found - no syslog handler set")
 
 def set_logging_levels(snaptool_level, snapshots_level=logging.ERROR,
                        background_level=logging.ERROR, wekalib_level=logging.ERROR):
@@ -472,7 +476,7 @@ def main():
         delete_old_snaps(cluster_connection, schedules_dict)
 
         # prevent same snap attempts from running again in the same minute
-        sleep_time = 60 - round((now() - next_snap_time).total_seconds(), 1)
+        sleep_time = round(60 - (now() - next_snap_time).total_seconds(), 1)
         if sleep_time > 0:
             log.info(f"Sleeping for {sleep_time} seconds before next loop")
             time.sleep(sleep_time)
