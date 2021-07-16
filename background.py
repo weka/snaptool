@@ -16,9 +16,10 @@ import logging
 import string
 
 log = logging.getLogger(__name__)
-snaplog = logging.getLogger("snapshot")
+snaplog = logging.getLogger("snapshot_f")
 
-class IntentLog:
+
+class IntentLog(object):
     def __init__(self, logfilename):
         self._lock = threading.Lock()
         self.filename = logfilename
@@ -35,18 +36,18 @@ class IntentLog:
                 os.rename(self.filename, self.filename + '.1')
 
     # append a record
-    def put_record(self, uuid_s, fsname, snapname, snapop, status):
+    def put_record(self, uuid_s, fsname, snapname, snap_op, status):
         with self._lock:
             with open(self.filename, "a") as fd:
-                fd.write(f"{uuid_s}:{fsname}:{snapname}:{snapop}:{status}\n")
+                fd.write(f"{uuid_s}:{fsname}:{snapname}:{snap_op}:{status}\n")
 
     # replay the log on a cluster
     def replay(self, cluster):
-        log.info(f"Replaying upload intent log")
+        log.info(f"Replaying background intent log")
         replay_start = time.time()
-        for uuid_str, fsname, snapname, snapop in self._incomplete_records():
-            log.info(f"re-scheduling {fsname}/{snapname} for {snapop}")
-            QueueOperation(cluster, fsname, snapname, snapop, uuid_str=uuid_str)
+        for uuid_str, fsname, snapname, snap_op in self._incomplete_records():
+            log.info(f"re-scheduling {fsname}/{snapname} for {snap_op}")
+            QueueOperation(cluster, fsname, snapname, snap_op, uuid_str=uuid_str)
         replay_elapsed_ms = round((time.time() - replay_start) * 1000, 1)
         log.warning(f"Replay intent log took {replay_elapsed_ms} ms")
 
@@ -68,13 +69,14 @@ class IntentLog:
         snaps = {}
         # distill the records to just ones that need to be re-processed
         log.info("Reading intent log")
-        for uid, fsname, snapname, clusterop, status in self._records():
+        for uid, fsname, snapname, cluster_op, status in self._records():
             if uid not in snaps:
                 snapshot = dict()
                 snapshot['fsname'] = fsname
                 snapshot['snapname'] = snapname
-                snapshot['operation'] = clusterop
+                snapshot['operation'] = cluster_op
                 snapshot['status'] = status
+                snapshot['uid'] = uid
                 snaps[uid] = snapshot
             else:
                 if status == "complete":
@@ -85,17 +87,22 @@ class IntentLog:
                     snaps[uid]['status'] = status  # update status
 
         # this should be a very short list - far less than 100; likely under 5
-        log.info(f"intent-log incomplete records len: {len(snaps)}; snaps = {snaps}")
-        sorted_snaps = {"queued": {}, "in-progress": {}, "error": {}}
+        sorted_snaps = {"queued": {}, "in-progress": {}, "error": {}, "complete": {}}
 
         for uid, snapshot in snaps.items():  # sort so we can see in-progress and error first
             log.debug(f"uuid={uid}, snapshot={snapshot}")
             sorted_snaps[snapshot['status']][uid] = snapshot
 
+        for uid, s in sorted_snaps['complete'].items():
+            if s['operation'] == "delete":
+                del snaps[uid]
+
         log.debug(f"sorted_snaps = {sorted_snaps}")
         log.debug(
             f"There are {len(sorted_snaps['error'])} error snaps, {len(sorted_snaps['in-progress'])} in-progress"
             f" snaps, and {len(sorted_snaps['queued'])} queued snaps in the intent log")
+
+        log.info(f"intent-log incomplete records len: {len(snaps)}; snaps = {snaps}")
 
         # process in order of status # not sure about error ones... do we re-queue?  Should only be 1 in-progress too
         for status in ["in-progress", "error", "queued"]:
@@ -124,7 +131,7 @@ def get_short_unique_id():     # returns a uuid4 that has been converted to base
         result.zfill(22)
     return result
 
-class QueueOperation:
+class QueueOperation(object):
     def __init__(self, cluster, fsname, snapname, op, uuid_str=None):
         global background_q
         global intent_log
@@ -137,9 +144,14 @@ class QueueOperation:
             uuid_str = get_short_unique_id()
         self.uuid = uuid_str
 
+        # queue the request
+        if op == "delete":
+            for i in list(background_q.queue):
+                if i.fsname == fsname and i.snapname == snapname and i.operation == "delete":
+                    log.debug(f"duplicate delete for {fsname}/{snapname} {op} ignored")
+                    return           # already in the queue, don't queue again for deletes
         if fsname != "WEKA_TERMINATE_THREAD" and snapname != "WEKA_TERMINATE_THREAD":
             intent_log.put_record(self.uuid, fsname, snapname, op, "queued")
-        # queue the request
         background_q.put(self)
 
 # process operations in the background - runs in a thread - starts before replaying log
@@ -147,23 +159,30 @@ def background_processor():
     global background_q      # queue of QueueOperation objects
     global intent_log       # log file(s) for all QueueOperation objects created, for replay if necessary
 
-    def snapshot_status(snapobj):
+    def snapshot_status(snap_obj):
         # get snap info via api - assumes snap has been created already
-        try:
-            status = snapobj.cluster.call_api(method="snapshots_list",
-                                              parms={'file_system': snapobj.fsname, 'name': snapobj.snapname})
-        except Exception as exc:
-            log.error(f"Error getting snapshot status for {snapobj.fsname}/{snapobj.snapname}: {exc}")
-            raise  # API error - let calling routine handle it
+        status = []
+        for i in range(3):   # try 3 times on some errors
+            try:
+                status = snap_obj.cluster.call_api(method="snapshots_list",
+                                                   parms={'file_system': snap_obj.fsname, 'name': snap_obj.snapname})
+            except Exception as exc:
+                log.error(f"Error getting snapshot status for {snap_obj.fsname}/{snap_obj.snapname}: {exc}")
+                if "(502) Bad Gateway" in str(exc):
+                    # pause and try again
+                    time.sleep(5)
+                    continue
+                else:
+                    raise  # API error - let calling routine handle it
 
         if len(status) == 0:
             # hmm... this one doesn't exist on the cluster? Let calling routine handle it
             # might be on purpose, or checking that it got deleted
             return None
         elif len(status) > 1:
-            log.warning(f"More than one snapshot returned for {snapobj.fsname}/{snapobj.snapname}")
+            log.warning(f"More than one snapshot returned for {snap_obj.fsname}/{snap_obj.snapname}")
         else:
-            log.debug(f"Snapshot status for {snapobj.fsname}/{snapobj.snapname}: {status}")
+            log.debug(f"Snapshot status for {snap_obj.fsname}/{snap_obj.snapname}: {status}")
 
         return status[0]
 
@@ -195,113 +214,119 @@ def background_processor():
                 return 10.0   # if not progressing, sleep longer
             else:
                 return 5.0    # first 25s
-        return 3.0  # default
+        return 2.0  # default
 
-    def upload_snap(snapobj):
+    def upload_snap(snap_obj):
         # get the current snap status to make sure it looks valid
         try:
-            snap_stat = snapshot_status(snapobj)
+            snap_stat = snapshot_status(snap_obj)
             # 'creationTime': '2021-05-14T15:15:00Z' - use to determine how long it takes to upload?
         except Exception as exc:
-            log.error(f"unable to upload snapshot {snapobj.fsname}/{snapobj.snapname}: {exc}")
+            log.error(f"unable to get snapshot status in upload {snap_obj.fsname}/{snap_obj.snapname}: {exc}")
             return
 
         if snap_stat is None:
-            log.error(f"{snapobj.fsname}/{snapobj.snapname} doesn't exist! Did creation fail?  Logging as complete...")
-            intent_log.put_record(snapobj.uuid, snapobj.fsname, snapobj.snapname, "upload", "complete")
+            log.error(f"{snap_obj.fsname}/{snap_obj.snapname} doesn't exist.  Not created?  Logging as complete...")
+            intent_log.put_record(snap_obj.uuid, snap_obj.fsname, snap_obj.snapname, "upload", "complete")
             return
 
         if snap_stat["stowStatus"] == "NONE":
             # Hasn't been uploaded yet; Try to upload the snap via API
             try:
-                snaps = snapobj.cluster.call_api(method="snapshot_upload",
-                                                 parms={'file_system': snapobj.fsname, 'snapshot': snapobj.snapname})
-                # snaps = {'extra': None, 'locator': '2561d133/d/s/28/spec/6ff5-4523-adfe-9255e506de76'}
+                snaps = snap_obj.cluster.call_api(method="snapshot_upload",
+                                                  parms={'file_system': snap_obj.fsname, 'snapshot': snap_obj.snapname})
+                # snaps = {'extra': None, 'locator': '2561d133/d/s/28/spec/6ff5-4523-abcd-9255e506de76'}
             except Exception as exc:
-                log.error(f"error uploading snapshot {snapobj.fsname}/{snapobj.snapname}: {exc}")
-                intent_log.put_record(snapobj.uuid, snapobj.fsname, snapobj.snapname, "upload", "error")
+                log.error(f"error uploading snapshot {snap_obj.fsname}/{snap_obj.snapname}: {exc}")
+                intent_log.put_record(snap_obj.uuid, snap_obj.fsname, snap_obj.snapname, "upload", "error")
+                if "not tiered: cannot upload from it" in str(exc):     # mark complete if it can't upload
+                    intent_log.put_record(snap_obj.uuid, snap_obj.fsname, snap_obj.snapname, "upload", "complete")
                 return  # skip the rest for this one
 
             # log that it's been told to upload
             # log.debug(f"snapshots = {snapshots}") # ***vince - check the return to make sure it's been told to upload
 
-            log.info(f"uploading snapshot {snapobj.fsname}/{snapobj.snapname}")
-            intent_log.put_record(snapobj.uuid, snapobj.fsname, snapobj.snapname, "upload", "in-progress")
-            snaplog.info(f"Upload initiated:{snapobj.fsname}:{snapobj.snapname}:{snaps['locator']}")
+            log.info(f"uploading snapshot {snap_obj.fsname}/{snap_obj.snapname}")
+            intent_log.put_record(snap_obj.uuid, snap_obj.fsname, snap_obj.snapname, "upload", "in-progress")
+            snaplog.info(f"Upload initiated:{snap_obj.fsname}:{snap_obj.snapname}:{snaps['locator']}")
 
         elif snap_stat["stowStatus"] == "SYNCHRONIZED":
             # we should only ever get here when replaying the log and this one was already in progress
-            log.error(f"upload of {snapobj.fsname}/{snapobj.snapname} was already complete. Logging it as such")
-            intent_log.put_record(snapobj.uuid, snapobj.fsname, snapobj.snapname, "upload", "complete")
+            log.error(f"upload of {snap_obj.fsname}/{snap_obj.snapname} was already complete. Logging it as such")
+            intent_log.put_record(snap_obj.uuid, snap_obj.fsname, snap_obj.snapname, "upload", "complete")
             return
 
         # otherwise, it should be uploading, so we fall through and monitor it
         # monitor progress - we have to wait for this one to complete before uploading another
         sleeptime = 5.0
         loopcount = 0
+        shortloopcount = 0
         while True:
             time.sleep(sleeptime)  # give it some time to upload, check in every 5s
             # get snap info via api
             try:
-                this_snap = snapshot_status(snapobj)
+                shortloopcount += 1
+                this_snap = snapshot_status(snap_obj)
             except Exception as exc:
-                log.error(f"error listing snapshots: checking status: {exc}")
-                return
-
+                log.error(f"error listing snapshot status: checking status: {snap_obj} - {exc}")
+                if shortloopcount > 10:   # Gotten errors 10 times for this upload, let it go
+                    return
+                else:
+                    continue      # otherwise continue loop, try again
             # track how many times we're checking the status
             loopcount += 1
-
             if this_snap is not None:
                 if this_snap["stowStatus"] == "UPLOADING":
                     progress = int(this_snap['objectProgress'][:-1])   # progress is something like "33%"
                     # reduce log spam - seems to hang under 50% for a while
                     sleeptime = sleep_time(loopcount, progress)
                     log.info(
-                        f"upload of {snapobj.fsname}/{snapobj.snapname} in progress: "
+                        f"upload of {snap_obj.fsname}/{snap_obj.snapname} in progress: "
                         f"{this_snap['objectProgress']} complete")
                     continue
                 elif this_snap["stowStatus"] == "SYNCHRONIZED":
-                    log.info(f"upload of {snapobj.fsname}/{snapobj.snapname} complete.")
-                    intent_log.put_record(snapobj.uuid, snapobj.fsname, snapobj.snapname, "upload", "complete")
-                    snaplog.info(f"Upload complete:{snapobj.fsname}:{snapobj.snapname}:{this_snap['locator']}")
+                    log.info(f"upload of {snap_obj.fsname}/{snap_obj.snapname} complete.")
+                    intent_log.put_record(snap_obj.uuid, snap_obj.fsname, snap_obj.snapname, "upload", "complete")
+                    snaplog.info(f"Upload complete:{snap_obj.fsname}:{snap_obj.snapname}:{this_snap['locator']}")
                     return
                 else:
                     log.error(
-                        f"upload status of {snapobj.fsname}/{snapobj.snapname} is {this_snap['stowStatus']}/" +
+                        f"upload status of {snap_obj.fsname}/{snap_obj.snapname} is {this_snap['stowStatus']}/" +
                         f"{this_snap['objectProgress']}?")
                     return  # prevent infinite loop
             else:
-                log.error(f"no snap status for {snapobj.fsname}/{snapobj.snapname}?")
+                log.error(f"no snap status for {snap_obj.fsname}/{snap_obj.snapname}?")
                 return
 
-    def delete_snap(snapobj):
-        log.info(f"Deleting snap {snapobj.fsname}/{snapobj.snapname}")
+    def delete_snap(snap_obj):
+        log.info(f"Deleting snap {snap_obj.fsname}/{snap_obj.snapname}")
         # maybe do a snap_status() so we know if it has an object locator and can reference the locator later?
         try:
-            status = snapshot_status(snapobj)
+            status = snapshot_status(snap_obj)
         except Exception as exc:
-            log.error(f"delete_snap: unable to get snapshot status for {snapobj.fsname}/{snapobj.snapname}: {exc}")
+            log.error(f"delete_snap: unable to get snapshot status for {snap_obj.fsname}/{snap_obj.snapname}: {exc}")
             return
 
         if status is None:
             # already gone? make sure it shows that way in the logs
-            intent_log.put_record(snapobj.uuid, snapobj.fsname, snapobj.snapname, "delete", "complete")
-            log.info(f"Snap {snapobj.fsname}/{snapobj.snapname} was deleted already")
+            intent_log.put_record(snap_obj.uuid, snap_obj.fsname, snap_obj.snapname, "delete", "complete")
+            log.info(f"Snap {snap_obj.fsname}/{snap_obj.snapname} was deleted already; marked complete in intent")
             return
         else:
             locator = status['locator']
 
         try:
             # ask cluster to delete the snap
-            result = snapobj.cluster.call_api(method="snapshot_delete",
-                                              parms={"file_system": snapobj.fsname, "name": snapobj.snapname})
+            result = snap_obj.cluster.call_api(method="snapshot_delete",
+                                               parms={"file_system": snap_obj.fsname, "name": snap_obj.snapname})
             log.debug(f"Delete result: {result}")
-            log.debug(f"Snap {snapobj.fsname}/{snapobj.snapname} delete initiated")
+            log.debug(f"Snap {snap_obj.fsname}/{snap_obj.snapname} delete initiated")
         except Exception as exc:
-            log.error(f"Error deleting snapshot {snapobj.snapname} from filesystem {snapobj.fsname}: {exc}")
+            log.error(f"Error deleting snap {snap_obj.fsname}/{snap_obj.snapname} : {exc} - skipping for now")
+            return
 
-        intent_log.put_record(snapobj.uuid, snapobj.fsname, snapobj.snapname, "delete", "in-progress")
-        snaplog.debug(f"Delete Initiated:{snapobj.fsname}/{snapobj.snapname}:{locator}")
+        intent_log.put_record(snap_obj.uuid, snap_obj.fsname, snap_obj.snapname, "delete", "in-progress")
+        snaplog.info(f"Delete Initiated:{snap_obj.fsname}/{snap_obj.snapname}:{locator}")
 
         # delete may take some time, particularly if uploaded to obj and it's big
         time.sleep(1)  # give just a little time, just in case it's instant
@@ -309,7 +334,7 @@ def background_processor():
         while True:
             # if may happen quickly, so sleep at the end of the cycle
             try:
-                this_snap = snapshot_status(snapobj)
+                this_snap = snapshot_status(snap_obj)
             except Exception as exc:
                 # when the snap no longer exists, we get a None back, so this is an error
                 # log.debug(f"snap delete raised exception")
@@ -318,20 +343,20 @@ def background_processor():
 
             # when the snap no longer exists, we get a None from snap_status()
             if this_snap is None:
-                intent_log.put_record(snapobj.uuid, snapobj.fsname, snapobj.snapname, "delete", "complete")
-                log.debug(f"Snap {snapobj.fsname}/{snapobj.snapname} sucessfully deleted")
-                snaplog.info(f"   Delete complete:{snapobj.fsname}/{snapobj.snapname}:{locator}")
+                intent_log.put_record(snap_obj.uuid, snap_obj.fsname, snap_obj.snapname, "delete", "complete")
+                log.info(f"     Snap {snap_obj.fsname}/{snap_obj.snapname} successfully deleted")
+                snaplog.info(f"Delete complete:{snap_obj.fsname}/{snap_obj.snapname}:{locator}")
                 return
             # track how many times we're checking the status
             loopcount += 1
             if this_snap['objectProgress'] == 'N/A' and this_snap['stowStatus'] == "NONE":   # wasn't uploaded.
-                log.debug(f"delete_snap: snap {snapobj.fsname}/{snapobj.snapname} wasn't uploaded (stowStatus NONE)")
+                log.debug(f"delete_snap: snap {snap_obj.fsname}/{snap_obj.snapname} wasn't uploaded (stowStatus NONE)")
                 progress = -1
             elif '%' in this_snap['objectProgress']:
                 progress = int(this_snap['objectProgress'][:-1])  # progress is something like "33%", remove last char
             else:
                 progress = 0
-            log.info(f"   Delete of {snapobj.fsname}/{snapobj.snapname} progress: {this_snap['objectProgress']}")
+            log.info(f"   Delete of {snap_obj.fsname}/{snap_obj.snapname} progress: {this_snap['objectProgress']}")
 
             # reduce log spam - seems to hang under 50% for a while (only if it was uploaded)
             sleeptime = sleep_time(loopcount, progress)
@@ -387,11 +412,11 @@ def background_processor():
             log.info(f"background_processor: terminating thread")
             return
 
-        time.sleep(3)   # slow down... make sure the snap is settled.
-
         if snapq_op.operation == "upload":
-            upload_snap(snapq_op)   # handles it's own errors
+            time.sleep(3)   # slow down... make sure the snap is settled.
+            upload_snap(snapq_op)   # handles its own errors
         elif snapq_op.operation == "delete":
+            time.sleep(0.3)   # less time between deletes
             delete_snap(snapq_op)
         # elif snap.operation == "create":
         #     create_snap(snap)
@@ -401,13 +426,13 @@ def background_processor():
 # upload queue for queuing object uploads
 background_q = queue.Queue()
 # intent log
-intent_log = IntentLog("upload_intent.log")
+intent_log = IntentLog("snap_intent_q.log")
 
 # start the upload thread
-upload_thread = threading.Thread(target=background_processor)
-upload_thread.daemon = True
-upload_thread.start()
-log.info(f"upload_thread = {upload_thread}")
+background_q_thread = threading.Thread(target=background_processor)
+background_q_thread.daemon = True
+background_q_thread.start()
+log.info(f"background_thread = {background_q_thread}")
 
 if __name__ == "__main__":
 
@@ -452,5 +477,5 @@ if __name__ == "__main__":
 
     time.sleep(15)
 
-    upload_thread.join()
+    background_q_thread.join()
 """
