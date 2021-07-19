@@ -1,16 +1,17 @@
 #!/bin/bash
-if [[ -e /dev/log ]] 
-then 
-   export syslog_mount='--mount type=bind,source=/dev/log,target=/dev/log'
-fi
-touch snap_intent_q.log
-touch snaptool.log
-docker run --network host \
-    -e TZ=America/Los_Angeles \
+config_dir=$PWD
+auth_dir=$HOME/.weka/
+time_zone=US/Eastern
+if [[ -e /dev/log ]]; then syslog_mount='--mount type=bind,source=/dev/log,target=/dev/log'; fi
+if [[ ! -f $config_dir/snaptool.yml ]]; then echo "'snaptool.yml' not found in '$config_dir'"; exit 1; fi
+if [[ ! -f $config_dir/snap_intent_q.log ]]; then touch $config_dir/snap_intent_q.log; fi
+if [[ ! -f $config_dir/snaptool.log ]]; then touch $config_dir/snaptool.log; fi
+
+docker run -d --network='host' \
+    -e TZ=$time_zone \
     $syslog_mount \
-    --mount type=bind,source=/Users/bruceclagett/weka/.weka/,target=/weka/.weka/ \
+    --mount type=bind,source=$auth_dir,target=/weka/.weka/ \
+    --mount type=bind,source=$config_dir,target=/weka \
     --mount type=bind,source=/etc/hosts,target=/etc/hosts \
-    --mount type=bind,source=$PWD/snaptool.yml,target=/weka/snaptool.yml \
-    --mount type=bind,source=$PWD/snap_intent_q.log,target=/weka/snap_intent_q.log \
-    --mount type=bind,source=$PWD/snaptool.log,target=/weka/snaptool.log \
+    --name weka_snaptool \
     wekasolutions/snaptool -vv vweka1,vweka2,vweka3
