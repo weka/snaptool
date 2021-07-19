@@ -97,7 +97,7 @@ class ClusterConnection(object):
         return self.weka_cluster
 
     def call_weka_api(self, method, parms):
-        exc = None
+        raise_exc = None
         max_retries = 20
         sleep_wait = 5
         for i in range(max_retries):
@@ -105,24 +105,27 @@ class ClusterConnection(object):
                 result = self.weka_cluster.call_api(method=method, parms=parms)
                 return result
             except wekalib.exceptions.APIError as exc:
+                raise_exc = exc
                 errmsg = f"{exc}"
                 err_type = type(exc).__name__
                 log.warning(f"wekalib exception for ('{method}', {parms}):")
                 log.warning(f"        wekalib message: '{err_type}: {exc}'")
                 if method == "snapshot_create":
-                    if errmsg == "name already exists":
+                    if errmsg.find("already exists") > 0:   # 'name already exists' or 'accessPoint already exists'
                         return None
+                log.warning(f"Will try again after {sleep_wait} seconds (retry {i + 1} of {max_retries})...")
                 time.sleep(sleep_wait)
-                if i > 1:  # first couple times just wait and try again.
+                if i >= 2:  # first couple times just wait and try again.
                     # After that, reconnect to cluster each failure, increase wait time
                     # could re-read config here in case filesystem name or authfile changed
                     # or other config fixed/changed?
                     # but it will get re-read after 5 min anyway, so no?
+                    log.warning(f"Reconnecting to cluster before next retry")
                     self.connect()
                     sleep_wait = 20
                 i += 1
                 continue
-        raise exc
+        raise raise_exc
 
     def check_cluster_connection(self):
         result = self.call_weka_api('status', {})
