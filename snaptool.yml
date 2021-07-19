@@ -44,7 +44,7 @@ cluster:
 filesystems:
    b01: fridays-4pm, daily-8am, wkdays-hourly-9-5, every15m-Mon-Fri, every5m, sat-sun-noon
    bs02: fridays-4pm, wkdays-hourly-9-5, every5m, sat-sun-noon
-   bsn03: default, every2m, every3m, every5mU, sat-sun-noon, sat-sun-interval
+   bsn03: default, daily-8am, every3m, every5mU, sat-sun-noon, sat-sun-interval
    bsna04: default, every15m-Mon-Fri, sat-sun-noon, sat-sun-interval
 
 schedules:
@@ -64,20 +64,20 @@ schedules:
          # at: 0000 (this is default)
       hourly:
          every: Mon,Tue,Wed,Thu,Fri
-         retain: 10
+         retain: 8
          interval: 60
          at: 9:00am
          until: 5pm
    every5m:
       every: day
       interval: 5
-      retain: 6
+      retain: 3
       at: 9am
       upload: False
    every5mU:
       every: day
       interval: 5
-      retain: 6
+      retain: 4
       at: 9am
       upload: True
    every3m:
@@ -86,15 +86,9 @@ schedules:
       retain: 2
       at: 9am
       upload: False
-   every2m:
-      every: day
-      interval: 2
-      retain: 0
-      at: 9am
-      upload: False
    wkdays-hourly-9-5:
       every: Mon,Tue,Wed,Thu,Fri
-      retain: 8
+      retain: 7
       at: 0900
       until: 5pm
       interval: 60
@@ -106,10 +100,10 @@ schedules:
       day: 31
    daily-8am:
       every: day
-      retain: 4
+      retain: 3 
       at: 8am
       upload: yes
-   dailysched2:
+   dailysched:
       monthly:
          every: month
          at: 0100
@@ -122,7 +116,7 @@ schedules:
          upload: no
    every15m-Mon-Fri:
       every: Mon,Tue,Wed,Thu,Fri
-      retain: 4
+      retain: 3
       interval: 15
       at: 0905
       until: 5pm
