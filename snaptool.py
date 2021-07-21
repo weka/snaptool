@@ -52,7 +52,7 @@ def setup_logging_initial():
     console_handler.setFormatter(logging.Formatter(console_format))
 
     log.addHandler(console_handler)
-    log.info("-------------------------Program (re)start initial---------------------------")
+    log.info("--------------------------Program (re)start initial----------------------------")
     # create handler to log to syslog
     log.info(f"setting syslog on {platform.platform()}")
     if platform.platform()[:5] == "macOS":
