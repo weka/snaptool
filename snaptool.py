@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 
 # Weka Snapshot Management Daemon
 # Vince Fleming
@@ -161,8 +160,10 @@ def syntax_check_top_level(args, config):
     msg = ''
     if 'cluster' in config:
         msg += "'cluster' found "
+        c_found = True
     else:
-        msg += "optional 'cluster' not found. "
+        msg += "'cluster' not found. "
+        c_found = False
     if 'filesystems' in config:
         msg += f"'filesystems' found. "
         fs_found = True
@@ -176,7 +177,7 @@ def syntax_check_top_level(args, config):
         msg += f"'schedules' not found. "
         s_found = False
     log.info(f"Config parse: {msg}")
-    if s_found and fs_found:
+    if s_found and fs_found and c_found:
         log.info(f"Config top level check ok. {msg}")
     else:
         config_syntax_error(args, msg)
@@ -190,24 +191,20 @@ def parse_bool(bool_str):
         log.error(f"Invalid boolean spec; should be 'yes', 'no', 'true' or 'false': {bool_str} in config file")
         sys.exit(1)
 
-def create_cluster_connection(config, args):
+def create_cluster_connection(config):
     # returns a cluster connection object
     cluster_yaml = {}
     if 'cluster' in config:
         cluster_yaml = config['cluster']
-    if args.clusterspec is not None:
-        clusterspec = args.clusterspec
-    elif 'hosts' in cluster_yaml:
+    if 'hosts' in cluster_yaml:
         clusterspec = cluster_yaml['hosts']
     else:
         log.error(f"A clusterspec is required in the config file or by command line")
         sys.exit(1)
-    if args.authfile is not None:
-        authfile = args.authfile
-    elif 'auth_token_file' in cluster_yaml:
+    if 'auth_token_file' in cluster_yaml:
         authfile = cluster_yaml['auth_token_file']
     else:
-        log.info(f"No auth file specified, trying auth-token.json")
+        log.warning(f"No auth file specified, trying auth-token.json")
         authfile = "auth-token.json"
     if 'force_https' in cluster_yaml:
         force_https = parse_bool(cluster_yaml['force_https'])
@@ -220,7 +217,7 @@ def create_cluster_connection(config, args):
     result = ClusterConnection(clusterspec, authfile, force_https, verify_cert)
     return result
 
-def config_parse_fs_schedules(config, args):
+def config_parse_fs_schedules(args, config):
     resultsdict = {}
     syntax_check_top_level(args, config)
 
@@ -254,10 +251,6 @@ def parse_snaptool_args():
     argparser = argparse.ArgumentParser(description="Weka Snapshot Management Daemon")
     argparser.add_argument("-c", "--configfile", dest='configfile', default="./snaptool.yml",
                            help="override ./snaptool.yml as config file")
-    argparser.add_argument("clusterspec", default=None, nargs='?',
-                           help=f"Cluster specification.  <host>,<host>... or <host>,<host>...:authfile")
-    argparser.add_argument("--auth-file", dest='authfile',
-                           default=None, help="Cluster authentication token file")
     argparser.add_argument("-v", "--verbosity", action="count", default=0, help="increase output verbosity")
     argparser.add_argument("--version", dest="version", default=False, action="store_true",
                            help="Display version number")
@@ -275,13 +268,6 @@ def parse_snaptool_args():
         loglevel = logging.INFO
     else:
         loglevel = logging.DEBUG
-
-    # allow cluster spec backward compatibility (ex: host1,host2,host3:~/auth-token.json)
-    if args.clusterspec is not None:
-        clusterspec_list = args.clusterspec.split(":")
-        args.clusterspec = clusterspec_list[0]
-        if len(clusterspec_list) > 1:
-            args.authfile = clusterspec_list[1]
 
     return args, loglevel
 
@@ -438,9 +424,9 @@ def main():
         snapshots.run_schedule_tests()
 
     config = get_configfile_config(args.configfile)
-    schedules_dict = config_parse_fs_schedules(config, args)
+    schedules_dict = config_parse_fs_schedules(args, config)
     log.info("Trying to create cluster connection...")
-    cluster_connection = create_cluster_connection(config, args)
+    cluster_connection = create_cluster_connection(config)
     cluster_connection.connect()
 
     log.warning("Replaying background operation intent log...")
@@ -457,8 +443,8 @@ def main():
         if (time.time() - last_reload_time) > reload_interval:
             log.info(f"--------------- Reloading configuration file {args.configfile}")
             config = get_configfile_config(args.configfile)
-            schedules_dict = config_parse_fs_schedules(config, args)
-            new_connection = create_cluster_connection(config, args)
+            schedules_dict = config_parse_fs_schedules(args, config)
+            new_connection = create_cluster_connection(config)
             if connection_info_changed(cluster_connection, new_connection):
                 log.info(f"-------------------- Reconnecting with different cluster configuration...")
                 new_connection.connect()

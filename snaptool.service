@@ -2,13 +2,15 @@
 [Unit]
 Description=Weka Snaptool
 Documentation=https://github.com/weka/snaptool
-After=weka-agent.service
-AssertFileIsExecutable=/usr/local/bin/snaptool   # Or wherever you choose to install snaptool
+After=network-online.target local-fs.target
+Wants=network-online.target local-fs.target
+AssertFileIsExecutable=/opt/weka/snaptool/snaptool
+AssertFileNotEmpty=/opt/weka/snaptool/snaptool.yml
 
 [Service]
-WorkingDirectory=/usr/local/etc
-ExecStart=/usr/local/bin/snaptool -c /usr/local/etc/snaptool.yml host1,host2,host3:/root/.weka/auth-token.json
-# You should change the above line to match your environment, including naming 3 of the backends.
+WorkingDirectory=/opt/weka/snaptool
+ExecStart=/opt/weka/snaptool/snaptool -vv -c /opt/weka/snaptool/snaptool.yml
+# You should change the above line to match your environment
 
 # Let systemd restart this service always
 Restart=always

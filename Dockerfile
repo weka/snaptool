@@ -12,7 +12,7 @@ RUN mkdir -p $BASEDIR
 
 WORKDIR $BASEDIR
 
-COPY snaptool $BASEDIR
+COPY snaptool.py $BASEDIR
 COPY snaptool.yml $BASEDIR
 COPY snapshots.py $BASEDIR
 COPY background.py $BASEDIR

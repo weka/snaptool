@@ -9,13 +9,13 @@ Schedule snapshots to be taken for each filesystem listed in snaptool.yml, with 
 
 # Configuration
 
-A YAML file provides configuration information. The default configuration file name is snaptool.yml, and a sample snaptool.yml is included.  There are three top-level sections:
+A YAML file provides configuration information. The default configuration file name is snaptool.yml, and a sample snaptool.yml is included.  There are three top-level sections, all of which are required:
 
     cluster:  
     filesystems: 
     schedules:
 
-Cluster information is in the 'cluster:' section.  Entries in this section are optional but recommended for ease of use.  See the example snaptool.yml, below, for valid syntax.  Entries allowed are:
+Cluster information is in the 'cluster:' section.  The hosts list is required.   Other entries in this section are optional but are recommended for clarity.  See the example snaptool.yml, below, for valid syntax.  Entries allowed are:
 
     cluster:
         auth_token_file: 
@@ -139,17 +139,7 @@ Note that snaptool does not distinguish between user-created and snaptool-create
 
 # Command-line Arguments
 
-The snaptool takes a "clusterspec" as an optional positional argument.  This will override the cluster spec host list in the config file.  This is a comma-separated list of weka hosts (ip addrs or names) with an optional :authfile.   The auth file comes from the "weka user login" command, is generally in the ~/.weka directory, and contains authorization tokens so that the snaptool program can communicate with the weka cluster.
-
-An example "cluster spec" would be:
-
-    weka1,weka2,weka3:~/.weka/auth-file.json
-
-Or just:
-
-    weka1,weka2,weka3
-
-Additional optional arguments:
+The snaptool command line takes the following optional arguments:
 
     -c or --configfile (optional), followed by a file name can be used to specify a file other than snaptool.yml for configuration information.
 
@@ -157,8 +147,8 @@ Additional optional arguments:
 
 Examples:
 
-    # run with some extra logging output, and override the hosts specified in the config file:
-    snaptool -v weka1,weka2,weka3
+    # run with some extra logging output, and use a different config file:
+    snaptool -v -c /home/user/my-snaptool-config.yml
     # run with a very high level of output logging
     snaptool -vvvv
 
