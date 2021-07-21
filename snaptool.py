@@ -40,6 +40,8 @@ def setup_logging_initial():
     snaptool_f_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
     snaplog.addHandler(snaptool_f_handler)
     snaplog.setLevel(logging.INFO)
+    # snaplog file is intended for high level action logging (create/delete snapshots, etc, distinct
+    # from other logging), so don't propagate to root logger
     snaplog.propagate = False
 
     syslog_format = "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
