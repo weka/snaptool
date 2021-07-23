@@ -25,11 +25,11 @@ import wekalib.wekacluster as wekacluster
 import snapshots
 import background
 
-VERSION = "0.11.0"
+VERSION = "1.0.0 b"
 
 # get the root logger, get snaptool logger
 log = logging.getLogger()
-log.setLevel(logging.INFO)  # to start
+log.setLevel(logging.WARNING)  # to start
 snaplog = logging.getLogger("snapshot_f")
 
 def now():
@@ -70,8 +70,8 @@ def setup_logging_initial():
 
 def set_logging_levels(snaptool_level, snapshots_level=logging.ERROR,
                        background_level=logging.ERROR, wekalib_level=logging.ERROR):
-    log.info("-------------------------Setting new log levels-------------------------------")
     log.setLevel(snaptool_level)
+    log.info("-------------------------Setting new log levels-------------------------------")
 
     urllib3.add_stderr_logger(level=logging.ERROR)
 
@@ -260,6 +260,7 @@ def parse_snaptool_args():
 
     if args.version:
         log.info(f"{sys.argv[0]} version {VERSION}")
+        print(f"{sys.argv[0]} version {VERSION}")
         sys.exit(0)
 
     if args.verbosity == 0:
