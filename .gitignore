@@ -14,3 +14,16 @@ snaptool.bak
 snaptool.log
 snaptool.yml.bak
 upload_intent.log
+/build/snaptool/Analysis-00.toc
+/auth-token.json
+/build/snaptool/base_library.zip
+/build/snaptool/PYZ-00.pyz
+/build/snaptool/PYZ-00.toc
+/snap_intent_q.log
+/snaptool.log.1
+/tarball/snaptool/snaptool.service
+/snaptool.spec
+/snaptool.tar
+/tarball/snaptool/snaptool.yml
+/build/snaptool/warn-snaptool.txt
+/build/snaptool/xref-snaptool.html

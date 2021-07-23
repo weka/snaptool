@@ -89,12 +89,12 @@ class ClusterConnection(object):
         self.authfile = authfile
         self.force_https = force_https
         self.verify_cert = cert_check
-        self.connect_time = datetime.datetime.min
+        self.connect_datetime = datetime.datetime.min
 
     def connect(self):
         self.weka_cluster = wekacluster.WekaCluster(self.clusterspec, self.authfile,
                                                     force_https=self.force_https, verify_cert=self.verify_cert)
-        self.connect_time = time.time()
+        self.connect_datetime = now()
         return self.weka_cluster
 
     def call_weka_api(self, method, parms):

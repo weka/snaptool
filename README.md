@@ -5,7 +5,26 @@ A solution that implements snapshot management for Weka Clusters
 
 # Features
 
-Schedule snapshots to be taken for each filesystem listed in snaptool.yml, with the ability to set a specific number of each specified snapshot to keep.   Expired snapshots are automatically deleted.  Optionally, snapshots automatically upload to a filesystem-associated Object Store.
+Schedule snapshots to be taken for each filesystem listed in snaptool.yml, with the ability to set a specific number of each specified snapshot to keep.   Expired snapshots are automatically deleted.  Optionally, snapshots can automatically be uploaded to an S3 Object Store, if the filesystem has tiering enabled.
+
+# Installation
+
+The latest binary release of snaptool can be downloaded as a tarball from https://github.com/weka/snaptool/releases; it is recommended this be downloaded to /opt/weka/snaptool.
+
+Once downloaded, untar the file
+
+    tar xvf snaptool-<version>.tar
+
+The extracted configuration file snaptool/snaptool.yml file will now need to be edited for the local environment.  See details below for configuration syntax.  
+
+Once the snaptool.yml file contains connection, filesystem, and schedule information for the local weka cluster, snaptool can be installed as a service as follows.   Note that if snaptool isn't in /opt/weka/snaptool, the snaptool.service file will need to be edited for the correct location first.  snaptool.service can also be edited if other command line options need to be changed.
+
+    cd snaptool
+    cp snaptool.service /etc/systemd/services
+    systemctl enable /etc/systemd/service/snaptool.service
+    systemctl start snaptool.service
+
+Snaptool can also be run in docker - if that is the desired deployment, see the "Running in Docker" section below.
 
 # Configuration
 
@@ -33,13 +52,13 @@ Using the example configuration file (YAML file), define your filesystems and wh
 
 To indicate that a particular schedule (i.e.: monthly, weekly) should not run on a filesystem, set the "retain" to 0, or remove it from the filesystem's schedule list.  
 
-It is suggested that snaptool be run as a service, via systemd with auto-restart set, or as a docker container.
+snaptool reloads the YAML configuration file before calculating the next set of snapshot runs, if at least 5 minutes have passed since the last reload.
 
 # Schedule Syntax
            
 Each schedule has the following syntax:                       
 
-    <schedulegroupname>:  
+    <optional schedulegroupname>:  
 
         <schedulename>:
 
@@ -141,9 +160,9 @@ Note that snaptool does not distinguish between user-created and snaptool-create
 
 The snaptool command line takes the following optional arguments:
 
-    -c or --configfile (optional), followed by a file name can be used to specify a file other than snaptool.yml for configuration information.
+    -c or --configfile followed by a path/filename can be used to specify a file other than ./snaptool.yml for configuration information.
 
-    -v, -vv, -vvv, or -vvvv (optional) specify logging verbosity.  More 'v's produce more verbose logging.
+    -v, -vv, -vvv, or -vvvv specify logging verbosity.  More 'v's produce more verbose logging.
 
 Examples:
 
@@ -155,6 +174,9 @@ Examples:
 # Running in Docker
 
 A sample docker-run.sh file is included.   Contents are shown here as an example.
+
+docker pull can be used to get the latest 
+
 ```
 #!/bin/bash
 config_dir=$PWD

@@ -1,0 +1,92 @@
+#
+# every: 'month' | 'day' | list of months | list of days
+#     if 'month' or list of months is provided:
+#         snap occurs at at: <time> on day of month specified by day: <day of month 1-31>
+#         day: defaults to 1, valid values: 1-31
+#         list of months can be full month names or 3 letter abbreviation, comma separated list
+#         if day of month is > number of days in a month, last day of the month is used
+#             e.g. 31 will snap on the last day of every listed month
+#    if 'day' or list of days is provided:
+#         snap occurs at: <time>
+#         if interval: is provided, potentially multiple snaps per day, see below
+#         list of days can be full name or 3 letter abbreviation, comma separated list
+#
+# at:
+#    first snap time of day.  Defaults to "0000" (midnight)
+#    accepts times like "9am", "9:15am" "2300" etc
+# retain:
+#    is the number of snapshots kept, 0 disables schedule and removes all snapshots for the schedule
+#    defaults to 4
+# interval:
+#    if interval: is not provided, single snapshot per day is taken at time specified by "at:"
+#    if interval: is provided - uses at: and until: for time range of snaps
+#       interval: is the number of minutes between snaps
+#       first snap is taken at at: then every <interval:> minutes until until: is reached
+# until:
+#    only used when interval: is provided - this is the latest a snap can be taken during a day
+#    defaults to "2359"
+# day:
+#    only used for 'month' or list of months, the day number of the month (1-31)
+# upload:
+#    defaults to no/False - yes/True uploads to object store
+#
+# note that if multiple schedules conflict for the same filesystem and scheduled minute,
+# only the schedule with the longest period between snaps will be taken
+# (e.g. interval of 60 will be taken vs 15 min.   monthly will be taken vs daily.   etc.)
+#
+
+cluster:
+   auth_token_file: auth-token.json
+   hosts: weka1,weka2,weka3
+   force_https: True   # only 3.10+ clusters support https
+   verify_cert: False  # default cert cannot be verified
+
+filesystems:
+   fs01: default
+   fs02: workhoursHourlyUp, weekendsNoon
+   fs03: workhoursEvery20, weekendsNoon, fridayUpload
+
+schedules:
+   default:
+      monthly:
+         every: month
+         retain: 6
+         # day: 1   (this is default)
+         # at: 0000 (this is default)
+      weekly:
+         every: Sunday
+         retain: 8
+         # at: 0000 (this is default)
+      daily:
+         every: Mon,Tue,Wed,Thu,Fri,Sat
+         retain: 14
+         # at: 0000 (this is default)
+      hourly:
+         every: Mon,Tue,Wed,Thu,Fri
+         retain: 8
+         interval: 60
+         at: 9:00am
+         until: 5pm
+   workhoursHourlyUp:
+      every: Mon,Tue,Wed,Thu,Fri
+      retain: 7
+      at: 0900
+      until: 5pm
+      interval: 60
+      upload: True
+   workhoursEvery20:
+      every: Mon,Tue,Wed,Thu,Fri
+      retain: 7
+      at: 0900
+      until: 5pm
+      interval: 20
+   weekendsNoon:
+      every: Sat,Sun
+      retain: 4
+      at: 1200
+   fridayUpload:
+      every: Friday
+      retain: 3
+      at: 7pm
+      upload: True
+
