@@ -24,13 +24,14 @@ if [[ $scriptdir != $destdir ]]; then
   cp $scriptdir/snaptool $destdir
   cp $scriptdir/snaptool.yml $destdir
   cp $scriptdir/snaptool-example.yml $destdir
-  if [[ ymlfound == "yes" ]]; then
+  if [[ $ymlfound == "yes" ]]; then
     echo "   Restoring existing snaptool.yml"
     cp $destdir/snaptool.yml.sav $destdir/snaptool.yml
   fi
 fi
 
-./snaptool --test-connection-only
+echo "   Testing cluster connection..."
+$destdir/snaptool --test-connection-only -c $destdir/snaptool.yml
 if [[ $? == 1 ]]; then
   echo "Connection test failed."
   echo "Please check for errors in the snaptool.yml file or network connectivity problems, " \
@@ -48,7 +49,8 @@ cp $scriptdir/snaptool.service /etc/systemd/system
 
 systemctl enable /etc/systemd/system/snaptool.service
 systemctl start snaptool.service
-echo "service installed and started... startup output:"
-sleep 2
+sleep 1
+echo "service installed and started... snaptool.service status:"
+sleep 1
 systemctl status snaptool.service
 
