@@ -24,4 +24,4 @@ RUN addgroup -S -g $ID $USER &&\
 RUN chmod +x $BASEDIR/snaptool
 
 USER $USER
-ENTRYPOINT ["./snaptool"]
+ENTRYPOINT ["python3", "snaptool.py"]
