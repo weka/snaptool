@@ -8,6 +8,13 @@ else
 fi
 scriptdir=$(dirname $(readlink -f "$0"))
 
+echo "Checking snaptool.service status..."
+systemctl status snaptool.service | grep running
+if [[ $? == 0 ]]; then
+  echo "   snaptool.service running, stopping it"
+  systemctl stop snaptool.service
+  systemctl disable snaptool.service
+fi
 ymlfound="no"
 if [[ $scriptdir != $destdir ]]; then
   echo "Installing to $destdir..."
