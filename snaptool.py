@@ -25,11 +25,14 @@ import wekalib.wekacluster as wekacluster
 import snapshots
 import background
 
-VERSION = "0.11.0"
+VERSION = "1.0.0 b"
 
 # get the root logger, get snaptool logger
 log = logging.getLogger()
-log.setLevel(logging.INFO)  # to start
+if os.environ.get('INITIAL_LOG_LEVEL') is not None:
+    log.setLevel(os.environ.get('INITIAL_LOG_LEVEL'))
+else:
+    log.setLevel(logging.WARNING)  # to start
 snaplog = logging.getLogger("snapshot_f")
 
 def now():
@@ -70,8 +73,8 @@ def setup_logging_initial():
 
 def set_logging_levels(snaptool_level, snapshots_level=logging.ERROR,
                        background_level=logging.ERROR, wekalib_level=logging.ERROR):
-    log.info("-------------------------Setting new log levels-------------------------------")
     log.setLevel(snaptool_level)
+    log.info("-------------------------Setting new log levels-------------------------------")
 
     urllib3.add_stderr_logger(level=logging.ERROR)
 
@@ -92,10 +95,15 @@ class ClusterConnection(object):
         self.connect_datetime = datetime.datetime.min
 
     def connect(self):
-        self.weka_cluster = wekacluster.WekaCluster(self.clusterspec, self.authfile,
-                                                    force_https=self.force_https, verify_cert=self.verify_cert)
-        self.connect_datetime = now()
-        return self.weka_cluster
+        connected = False
+        try:
+            self.weka_cluster = wekacluster.WekaCluster(self.clusterspec, self.authfile,
+                                                        force_https=self.force_https, verify_cert=self.verify_cert)
+            self.connect_datetime = now()
+            connected = self.weka_cluster
+        except Exception as exc:
+            log.error(f"Failed to connect to cluster hosts: {self.clusterspec} with authfile: {self.authfile}.  {exc}")
+        return connected
 
     def call_weka_api(self, method, parms):
         raise_exc = None
@@ -252,14 +260,20 @@ def config_parse_fs_schedules(args, config):
 def parse_snaptool_args():
     argparser = argparse.ArgumentParser(description="Weka Snapshot Management Daemon")
     argparser.add_argument("-c", "--configfile", dest='configfile', default="./snaptool.yml",
-                           help="override ./snaptool.yml as config file")
-    argparser.add_argument("-v", "--verbosity", action="count", default=0, help="increase output verbosity")
+                           help="specify a file other than './snaptool.yml' for the config file")
+    argparser.add_argument("-v", "--verbosity", action="count", default=0,
+                           help="increase output verbosity; -v, -vv, -vvv, or -vvvv")
     argparser.add_argument("--version", dest="version", default=False, action="store_true",
                            help="Display version number")
+    # hidden argument for connection test only.   exits program with 1 if connection fails, 0 otherwise.
+    # Also prints "Connection Succeeded" or "Connection Failed"
+    argparser.add_argument("--test-connection-only", dest="test_connection_only",
+                           action='store_true', default=False, help=argparse.SUPPRESS)
     args = argparser.parse_args()
 
     if args.version:
         log.info(f"{sys.argv[0]} version {VERSION}")
+        print(f"{sys.argv[0]} version {VERSION}")
         sys.exit(0)
 
     if args.verbosity == 0:
@@ -422,14 +436,28 @@ def main():
 
     # tests
     run_tests = True
-    if run_tests:
+    if run_tests:     # scheduling computation tests
         snapshots.run_schedule_tests()
 
-    config = get_configfile_config(args.configfile)
-    schedules_dict = config_parse_fs_schedules(args, config)
-    log.info("Trying to create cluster connection...")
-    cluster_connection = create_cluster_connection(config)
-    cluster_connection.connect()
+    connected = False
+    cluster_connection, schedules_dict = None, None
+    while not connected:
+        config = get_configfile_config(args.configfile)
+        schedules_dict = config_parse_fs_schedules(args, config)
+        log.info("Attempting cluster connection...")
+        cluster_connection = create_cluster_connection(config)
+        connected = cluster_connection.connect()
+        if args.test_connection_only:
+            if connected:
+                print("Connection Succeeded")
+                sys.exit(0)
+            else:
+                print("Connection Failed")
+                sys.exit(1)
+        if not connected:
+            log.error(f"Connection to {cluster_connection.clusterspec} failed.  "
+                      f"Sleeping 60 seconds then reloading config, and trying again.")
+            time.sleep(5)
 
     log.warning("Replaying background operation intent log...")
     background.intent_log.replay(cluster_connection.weka_cluster)

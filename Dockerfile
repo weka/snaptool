@@ -13,15 +13,13 @@ RUN mkdir -p $BASEDIR
 WORKDIR $BASEDIR
 
 COPY snaptool.py $BASEDIR
-COPY snaptool.yml $BASEDIR
 COPY snapshots.py $BASEDIR
 COPY background.py $BASEDIR
+COPY snaptool-example.yml $BASEDIR/snaptool.yml
 
 RUN addgroup -S -g $ID $USER &&\
     adduser -S -h $BASEDIR -u $ID -G $USER $USER && \
     chown -R $USER:$USER $BASEDIR
-
-RUN chmod +x $BASEDIR/snaptool
 
 USER $USER
 ENTRYPOINT ["python3", "snaptool.py"]
