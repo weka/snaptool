@@ -3,7 +3,7 @@
 
 scriptdir=$(dirname $(readlink -f "$0"))
 if [[ $scriptdir != '/opt/weka/snaptool' ]]; then
-  echo "Not in /opt/weka - changing snaptool.service file to point to current directory"
+  echo "Install location is not /opt/weka - changing snaptool.service file to point to current directory"
   sedstr=$(echo s%/opt/weka/snaptool%$scriptdir%g)
   sed -i $sedstr $scriptdir/snaptool.service
 fi
@@ -18,5 +18,8 @@ fi
 
 cp $scriptdir/snaptool.service /etc/systemd/system
 
-snaptool enable /etc/systemd/system/snaptool.service
-snaptool start snaptool.service
+systemctl enable /etc/systemd/system/snaptool.service
+systemctl start snaptool.service
+echo "service installed and started... startup output:"
+journalctl -u snaptool.service
+
