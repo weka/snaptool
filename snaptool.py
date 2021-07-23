@@ -163,8 +163,8 @@ class ScheduleGroup(object):
 
 
 def config_syntax_error(args, message):
-    logging.error(f"Error in file {args.configfile}: {message}")
-    sys.exit(1)
+    logging.error(f"Error in file {args.configfile}: {message} - please fix - sleeping for 300 seconds")
+    time.sleep(300)
 
 def syntax_check_top_level(args, config):
     msg = ''
@@ -199,7 +199,8 @@ def parse_bool(bool_str):
         return False
     else:
         log.error(f"Invalid boolean spec; should be 'yes', 'no', 'true' or 'false': {bool_str} in config file")
-        sys.exit(1)
+        log.error(f"Assuming False")
+        return False
 
 def create_cluster_connection(config):
     # returns a cluster connection object
@@ -209,8 +210,8 @@ def create_cluster_connection(config):
     if 'hosts' in cluster_yaml:
         clusterspec = cluster_yaml['hosts']
     else:
-        log.error(f"A clusterspec is required in the config file or by command line")
-        sys.exit(1)
+        log.error(f"A clusterspec is required in the config file.  Exiting")
+        clusterspec = ''
     if 'auth_token_file' in cluster_yaml:
         authfile = cluster_yaml['auth_token_file']
     else:
