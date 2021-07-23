@@ -164,7 +164,7 @@ class ScheduleGroup(object):
 
 def config_syntax_error(args, message):
     logging.error(f"Error in file {args.configfile}: {message} - please fix")
-    time.sleep(5)
+    time.sleep(10)
 
 def syntax_check_top_level(args, config):
     msg = ''
