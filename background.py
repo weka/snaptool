@@ -32,13 +32,12 @@ def create_log_dir_file(filename):
             log.info(f"Created file {fname}")
     os.chmod(fname, 0o666)
     os.umask(prevmask)
-
+    return fname
 
 class IntentLog(object):
     def __init__(self, logfilename):
         self._lock = threading.Lock()
-        self.filename = logfilename
-        create_log_dir_file(logfilename)
+        self.filename = create_log_dir_file(logfilename)
 
     def rotate(self):  # only rotate if needed
         with self._lock:
@@ -439,16 +438,19 @@ def background_processor():
 
 
 # module init
-# upload queue for queuing object uploads
-background_q = queue.Queue()
-# intent log
-intent_log = IntentLog(intent_log_filename)
+def init_background_q():
+    global background_q
+    global intent_log
+    # background queue for queuing object uploads
+    background_q = queue.Queue()
+    # intent log
+    intent_log = IntentLog(intent_log_filename)
 
-# start the upload thread
-background_q_thread = threading.Thread(target=background_processor)
-background_q_thread.daemon = True
-background_q_thread.start()
-log.info(f"background_thread = {background_q_thread}")
+    # start the upload thread
+    background_q_thread = threading.Thread(target=background_processor)
+    background_q_thread.daemon = True
+    background_q_thread.start()
+    log.info(f"background_thread = {background_q_thread}")
 
 if __name__ == "__main__":
 

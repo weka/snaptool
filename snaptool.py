@@ -40,10 +40,10 @@ action_history_log_file = "snaptool.log"
 def now():
     return datetime.datetime.now()
 
-def setup_logging_initial():
-    background.create_log_dir_file(action_history_log_file)
+def setup_actions_log():
+    resolved_fname = background.create_log_dir_file(action_history_log_file)
 
-    snaptool_f_handler = logging.handlers.RotatingFileHandler(action_history_log_file,
+    snaptool_f_handler = logging.handlers.RotatingFileHandler(resolved_fname,
                                                               maxBytes=10 * 1024 * 1024, backupCount=2)
     snaptool_f_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
     snaplog.addHandler(snaptool_f_handler)
@@ -51,6 +51,8 @@ def setup_logging_initial():
     # snaplog file is intended for high level action logging (create/delete snapshots, etc, distinct
     # from other logging), so don't propagate to root logger
     snaplog.propagate = False
+
+def setup_logging_initial():
 
     syslog_format = "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
     console_format = "%(asctime)s:%(levelname)7s:%(filename)s:%(lineno)s:%(funcName)s():%(message)s"
@@ -278,7 +280,6 @@ def parse_snaptool_args():
     args = argparser.parse_args()
 
     if args.version:
-        log.info(f"{sys.argv[0]} version {VERSION}")
         print(f"{sys.argv[0]} version {VERSION}")
         sys.exit(0)
 
@@ -434,10 +435,10 @@ def connection_info_changed(existing_connection, new_connection):
         return False
 
 def main():
+    args, loglevel = parse_snaptool_args()
     setup_logging_initial()
     # handle signals (ie: ^C and such)
     signals.signal_handling()
-    args, loglevel = parse_snaptool_args()
     set_logging_levels(loglevel, snapshots_level=loglevel, background_level=logging.INFO)
 
     # tests
@@ -465,7 +466,9 @@ def main():
                       f"Sleeping then reloading config, and trying again.")
             time.sleep(60)
 
-    log.warning("Replaying background operation intent log...")
+    setup_actions_log()
+    log.warning("Initializing background q and replaying operation intent log...")
+    background.init_background_q()
     background.intent_log.replay(cluster_connection.weka_cluster)
 
     # do this once at beginning so we don't wait for next snap time to clean up anything missed from previous runs
