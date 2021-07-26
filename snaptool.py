@@ -34,12 +34,17 @@ if os.environ.get('INITIAL_LOG_LEVEL') is not None:
 else:
     log.setLevel(logging.WARNING)  # to start
 snaplog = logging.getLogger("snapshot_f")
+action_history_log_file = "snaptool.log"
+
 
 def now():
     return datetime.datetime.now()
 
 def setup_logging_initial():
-    snaptool_f_handler = logging.handlers.RotatingFileHandler("snaptool.log", maxBytes=10 * 1024 * 1024, backupCount=2)
+    background.create_log_dir_file(action_history_log_file)
+
+    snaptool_f_handler = logging.handlers.RotatingFileHandler(action_history_log_file,
+                                                              maxBytes=10 * 1024 * 1024, backupCount=2)
     snaptool_f_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
     snaplog.addHandler(snaptool_f_handler)
     snaplog.setLevel(logging.INFO)
@@ -457,8 +462,8 @@ def main():
                 sys.exit(1)
         if not connected:
             log.error(f"Connection to {cluster_connection.clusterspec} failed.  "
-                      f"Sleeping 60 seconds then reloading config, and trying again.")
-            time.sleep(5)
+                      f"Sleeping then reloading config, and trying again.")
+            time.sleep(60)
 
     log.warning("Replaying background operation intent log...")
     background.intent_log.replay(cluster_connection.weka_cluster)

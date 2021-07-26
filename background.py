@@ -17,12 +17,28 @@ import string
 
 log = logging.getLogger(__name__)
 snaplog = logging.getLogger("snapshot_f")
+logdir = "logs"
+intent_log_filename = "snap_intent_q.log"
+
+def create_log_dir_file(filename):
+    prevmask = os.umask(0)
+    if not os.path.isdir(logdir):
+        os.mkdir(logdir, mode=0o777)
+    else:
+        os.chmod(logdir, 0o777)
+    fname=f"{logdir}/{filename}"
+    if not os.path.isfile(fname):
+        with open(fname, 'w'):
+            log.info(f"Created file {fname}")
+    os.chmod(fname, 0o666)
+    os.umask(prevmask)
 
 
 class IntentLog(object):
     def __init__(self, logfilename):
         self._lock = threading.Lock()
         self.filename = logfilename
+        create_log_dir_file(logfilename)
 
     def rotate(self):  # only rotate if needed
         with self._lock:
@@ -426,7 +442,7 @@ def background_processor():
 # upload queue for queuing object uploads
 background_q = queue.Queue()
 # intent log
-intent_log = IntentLog("snap_intent_q.log")
+intent_log = IntentLog(intent_log_filename)
 
 # start the upload thread
 background_q_thread = threading.Thread(target=background_processor)

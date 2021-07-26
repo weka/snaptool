@@ -1,4 +1,4 @@
-# OSX trash
+f# OSX trash
 .DS_Store
 
 __pycache__
@@ -27,3 +27,7 @@ upload_intent.log
 /tarball/snaptool/snaptool.yml
 /build/snaptool/warn-snaptool.txt
 /build/snaptool/xref-snaptool.html
+/logs/
+/tarball/
+/dist/
+/build/
