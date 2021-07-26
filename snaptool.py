@@ -41,9 +41,9 @@ def now():
     return datetime.datetime.now()
 
 def setup_logging_initial():
-    background.create_log_dir_file(action_history_log_file)
+    resolved_fname = background.create_log_dir_file(action_history_log_file)
 
-    snaptool_f_handler = logging.handlers.RotatingFileHandler(action_history_log_file,
+    snaptool_f_handler = logging.handlers.RotatingFileHandler(resolved_fname,
                                                               maxBytes=10 * 1024 * 1024, backupCount=2)
     snaptool_f_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
     snaplog.addHandler(snaptool_f_handler)

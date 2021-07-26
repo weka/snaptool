@@ -32,13 +32,13 @@ def create_log_dir_file(filename):
             log.info(f"Created file {fname}")
     os.chmod(fname, 0o666)
     os.umask(prevmask)
+    return fname
 
 
 class IntentLog(object):
     def __init__(self, logfilename):
         self._lock = threading.Lock()
-        self.filename = logfilename
-        create_log_dir_file(logfilename)
+        self.filename = create_log_dir_file(logfilename)
 
     def rotate(self):  # only rotate if needed
         with self._lock:
