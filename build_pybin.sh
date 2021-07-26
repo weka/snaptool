@@ -12,8 +12,8 @@ cp snaptool-example.yml $TARGET
 cp snaptool-example.yml $TARGET/snaptool.yml
 cp snaptool.service $TARGET
 cp docker_run.sh $TARGET
-cp install.sh $TARGET
 chmod +xx $TARGET/docker_run.sh
+cp install.sh $TARGET
 chmod +xx $TARGET/install.sh
 
 cd tarball
