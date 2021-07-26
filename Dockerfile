@@ -4,17 +4,18 @@ RUN apk add --no-cache bash curl python3 py3-pip tzdata
 
 RUN pip3 install pyyaml python-dateutil urllib3 wekalib
 
+ARG BIN="./tarball/snaptool/snaptool"
 ARG BASEDIR="/weka"
+ARG LOGDIR="/weka/logs"
 ARG ID="472"
 ARG USER="weka"
 
 RUN mkdir -p $BASEDIR
+RUN mkdir -p $LOGDIR
 
 WORKDIR $BASEDIR
 
-COPY snaptool.py $BASEDIR
-COPY snapshots.py $BASEDIR
-COPY background.py $BASEDIR
+COPY $BIN $BASEDIR
 COPY snaptool-example.yml $BASEDIR/snaptool.yml
 
 RUN addgroup -S -g $ID $USER &&\
@@ -22,4 +23,5 @@ RUN addgroup -S -g $ID $USER &&\
     chown -R $USER:$USER $BASEDIR
 
 USER $USER
-ENTRYPOINT ["python3", "snaptool.py"]
+CMD ["-c", "snaptool.yml"]
+ENTRYPOINT ["snaptool"]
