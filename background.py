@@ -18,6 +18,7 @@ import string
 log = logging.getLogger(__name__)
 snaplog = logging.getLogger("snapshot_f")
 logdir = "logs"
+background_q = queue.Queue()
 intent_log_filename = "snap_intent_q.log"
 
 def create_log_dir_file(filename):
@@ -26,7 +27,7 @@ def create_log_dir_file(filename):
         os.mkdir(logdir, mode=0o777)
     else:
         os.chmod(logdir, 0o777)
-    fname=f"{logdir}/{filename}"
+    fname = f"{logdir}/{filename}"
     if not os.path.isfile(fname):
         with open(fname, 'w'):
             log.info(f"Created file {fname}")
@@ -150,6 +151,7 @@ class QueueOperation(object):
     def __init__(self, cluster, fsname, snapname, op, uuid_str=None):
         global background_q
         global intent_log
+
         self.fsname = fsname
         self.snapname = snapname
         self.operation = op
@@ -409,7 +411,6 @@ def background_processor():
         try:
             # don't block forever so we can keep an eye on the main thread
             # background_q.get() returns a QueueOperation object
-            # log.debug(f"Getting from queue")
             snapq_op = background_q.get(block=True, timeout=1)  # block for up to 1s
         except queue.Empty:
             # log.debug(f"Queue get timed out; nothing in queue.")
@@ -436,23 +437,24 @@ def background_processor():
         # elif snap.operation == "create":
         #     create_snap(snap)
 
-
 # module init
 def init_background_q():
-    global background_q
     global intent_log
-    # background queue for queuing object uploads
-    background_q = queue.Queue()
     # intent log
-    intent_log = IntentLog(intent_log_filename)
+    if intent_log is None:
+        intent_log = IntentLog(intent_log_filename)
 
-    # start the upload thread
-    background_q_thread = threading.Thread(target=background_processor)
-    background_q_thread.daemon = True
-    background_q_thread.start()
-    log.info(f"background_thread = {background_q_thread}")
+        # start the upload thread
+        background_q_thread = threading.Thread(target=background_processor)
+        background_q_thread.daemon = True
+        background_q_thread.start()
+        log.info(f"background_thread = {background_q_thread}")
+    return intent_log
 
 if __name__ == "__main__":
+    global intent_log
+
+    init_background_q()
 
     time.sleep(2)
 
