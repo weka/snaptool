@@ -362,7 +362,7 @@ def create_snapshot(cluster, fs, name, access_point_name, upload):
     try:
         status = cluster.call_weka_api(method="snapshots_list", parms={'file_system': fs, 'name': name})
         if len(status) == 1:
-            snaplog.warning(f"Snapshot fs/name {fs}/{name} already exists; skipping")
+            snaplog.info(f"Exists already: {fs} - {name}")
             return
         created_snap = cluster.call_weka_api(method="snapshot_create", parms={
                 "file_system": fs,
@@ -370,9 +370,11 @@ def create_snapshot(cluster, fs, name, access_point_name, upload):
                 "access_point": access_point_name,
                 "is_writable": False})
         if created_snap is None:
-            log.info(f"   snap {fs}/{name} already exists")
+            snaplog.info(f"Exists already: {fs} - {name}")
+            log.info(f"   snap {fs} {name} already exists")
         else:
-            snaplog.info(f"   snap {fs}/{name} created")
+            snaplog.info(f"Created {fs} - {name}")
+            log.info(f"   snap {fs}/{name} already exists")
         if upload:
             background.QueueOperation(cluster.weka_cluster, fs, name, "upload")
     except Exception as exc:
