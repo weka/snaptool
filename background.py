@@ -20,7 +20,7 @@ snaplog = logging.getLogger("snapshot_f")
 logdir = "logs"
 background_q = queue.Queue()
 intent_log_filename = "snap_intent_q.log"
-intent_log = None
+intent_log = 'None'
 
 def create_log_dir_file(filename):
     prevmask = os.umask(0)
@@ -444,7 +444,8 @@ def background_processor():
 def init_background_q():
     global intent_log
     # intent log
-    if intent_log is None:
+    print(intent_log)
+    if intent_log == 'None':
         intent_log = IntentLog(intent_log_filename)
 
         # start the upload thread
