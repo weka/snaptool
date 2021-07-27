@@ -265,10 +265,22 @@ def config_parse_fs_schedules(args, config):
                 resultsdict[sched_name].filesystems.append(fs_name)
     return resultsdict
 
+def find_config_file(configfile):
+    # try to find the configfile in a couple locations if not found at just what was specified
+    if os.path.exists(configfile):
+        return configfile
+    search_path = ['', '.', '~/.weka', '~/.config', '.weka', '/weka', '/weka/.weka']
+    for p in search_path:
+        target = os.path.join(p, configfile)
+        if os.path.exists(target):
+            return target
+    log.error(f"  ***   Config file {configfile} not found!")
+    return configfile
+
 def parse_snaptool_args():
     argparser = argparse.ArgumentParser(description="Weka Snapshot Management Daemon")
-    argparser.add_argument("-c", "--configfile", dest='configfile', default="./snaptool.yml",
-                           help="specify a file other than './snaptool.yml' for the config file")
+    argparser.add_argument("-c", "--configfile", dest='configfile', default="snaptool.yml",
+                           help="specify a file other than 'snaptool.yml' for the config file")
     argparser.add_argument("-v", "--verbosity", action="count", default=0,
                            help="increase output verbosity; -v, -vv, -vvv, or -vvvv")
     argparser.add_argument("--version", dest="version", default=False, action="store_true",
@@ -282,6 +294,8 @@ def parse_snaptool_args():
     if args.version:
         print(f"{sys.argv[0]} version {VERSION}")
         sys.exit(0)
+
+    args.configfile = find_config_file(args.configfile)
 
     if args.verbosity == 0:
         loglevel = logging.ERROR
@@ -362,7 +376,7 @@ def create_snapshot(cluster, fs, name, access_point_name, upload):
     try:
         status = cluster.call_weka_api(method="snapshots_list", parms={'file_system': fs, 'name': name})
         if len(status) == 1:
-            snaplog.warning(f"Snapshot fs/name {fs}/{name} already exists; skipping")
+            snaplog.info(f"Exists already: {fs} - {name}")
             return
         created_snap = cluster.call_weka_api(method="snapshot_create", parms={
                 "file_system": fs,
@@ -370,9 +384,11 @@ def create_snapshot(cluster, fs, name, access_point_name, upload):
                 "access_point": access_point_name,
                 "is_writable": False})
         if created_snap is None:
-            log.info(f"   snap {fs}/{name} already exists")
+            snaplog.info(f"Exists already: {fs} - {name}")
+            log.info(f"   snap {fs} {name} already exists")
         else:
-            snaplog.info(f"   snap {fs}/{name} created")
+            snaplog.info(f"Created {fs} - {name}")
+            log.info(f"   snap {fs}/{name} already exists")
         if upload:
             background.QueueOperation(cluster.weka_cluster, fs, name, "upload")
     except Exception as exc:
