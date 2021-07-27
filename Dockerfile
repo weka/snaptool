@@ -18,7 +18,7 @@ WORKDIR $BASEDIR
 
 RUN addgroup -S -g $ID $USER &&\
     adduser -S -h $BASEDIR -u $ID -G $USER $USER && \
-    chown -R $USER:$USER $BASEDIR &&
+    chown -R $USER:$USER $BASEDIR
 
 USER $USER
 CMD ["-c", "snaptool.yml"]
