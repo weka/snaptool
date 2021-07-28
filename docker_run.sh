@@ -4,13 +4,15 @@
 #
 config_dir=$PWD
 auth_dir=$HOME/.weka
-config_fname=$config_dir/snaptool.yml
+config_file=$config_dir/snaptool.yml
 time_zone=US/Eastern
 
-if [[ ! -f $config_fname ]]; then echo "Config file '$config_fname' missing.  Exiting."; exit 1; fi
+if [[ ! -f $config_file ]]; then echo "Config file '$config_file' missing.  Exiting."; exit 1; fi
 
 # some OS variants may not have this syslog option; if it doesn't exist, don't set it up
 if [[ -e /dev/log ]]; then syslog_mount='--mount type=bind,source=/dev/log,target=/dev/log'; fi
+
+mkdir -p $config_dir/logs ; chown 472 $config_dir/logs
 
 docker run -d --network='host' --restart always \
     -e TZ=$time_zone \
@@ -19,4 +21,4 @@ docker run -d --network='host' --restart always \
     --mount type=bind,source=$auth_dir,target=/weka/.weka \
     --mount type=bind,source=/etc/hosts,target=/etc/hosts \
     --name weka_snaptool \
-    wekasolutions/snaptool -vv
+    wekasolutions/snaptool -vv -c $config_file --version
