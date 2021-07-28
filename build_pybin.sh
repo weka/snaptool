@@ -3,7 +3,7 @@
 #
 TOOL=snaptool
 MAIN=snaptool.py
-pyinstaller --hidden_import tzdata --onefile $MAIN
+pyinstaller --hidden-import tzdata --onefile $MAIN
 
 TARGET=tarball/$TOOL
 mkdir -p $TARGET
