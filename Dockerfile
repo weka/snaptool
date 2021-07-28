@@ -16,5 +16,6 @@ RUN chown $USER $BIN_DST
 
 WORKDIR $HOMEDIR
 USER $USER
+ENV IN_DOCKER="YES"
 CMD ["--version"]
 ENTRYPOINT ["/wekabin/snaptool"]
