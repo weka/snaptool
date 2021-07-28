@@ -21,4 +21,4 @@ docker run -d --network='host' --restart always \
     --mount type=bind,source=$auth_dir,target=/weka/.weka \
     --mount type=bind,source=/etc/hosts,target=/etc/hosts \
     --name weka_snaptool \
-    wekasolutions/snaptool -vv -c $config_file --version
+    wekasolutions/snaptool -vv -c $config_file
