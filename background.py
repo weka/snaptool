@@ -20,6 +20,7 @@ snaplog = logging.getLogger("snapshot_f")
 logdir = "logs"
 background_q = queue.Queue()
 intent_log_filename = "snap_intent_q.log"
+intent_log = 'Global uninitialized'
 
 def create_log_dir_file(filename):
     prevmask = os.umask(0)
@@ -438,11 +439,12 @@ def background_processor():
         # elif snap.operation == "create":
         #     create_snap(snap)
 
+
 # module init
 def init_background_q():
     global intent_log
     # intent log
-    if intent_log is None:
+    if intent_log == 'Global uninitialized':
         intent_log = IntentLog(intent_log_filename)
 
         # start the upload thread
@@ -454,9 +456,8 @@ def init_background_q():
 
 
 if __name__ == "__main__":
-    global intent_log
 
-    init_background_q()
+    intent_log = init_background_q()
 
     time.sleep(2)
 
