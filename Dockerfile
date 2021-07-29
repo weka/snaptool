@@ -7,16 +7,16 @@ ARG ID="472"
 ARG USER="weka"
 ARG HOMEDIR="/weka"
 
-RUN apt-get update && DEBIAN_FRONTEND="noninteractive" apt-get -y install tzdata
+RUN apt-get update && \
+    DEBIAN_FRONTEND="noninteractive" apt-get --no-install-recommends -y install tzdata && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p $BIN_DST
+RUN adduser --home $HOMEDIR --uid $ID --disabled-password --gecos "Weka User" $USER && \
+    mkdir -p $BIN_DST
 
 COPY $SNAPTOOL_BIN $BIN_DST
 
-RUN adduser --home $HOMEDIR --uid $ID --disabled-password --gecos "Weka User" $USER
-RUN chown $USER $BIN_DST
-
 WORKDIR $HOMEDIR
 USER $USER
-ENV IN_DOCKER="YES"
+ENV IN_DOCKER_CONTAINER="YES"
 ENTRYPOINT ["/wekabin/snaptool"]

@@ -37,7 +37,7 @@
 
 cluster:
    auth_token_file: auth-token.json
-   hosts: wvweka1,wvweka2,wvweka3
+   hosts: weka01,weka02,weka03
    force_https: True   # only 3.10+ clusters support https
    verify_cert: False  # default cert cannot be verified
 
