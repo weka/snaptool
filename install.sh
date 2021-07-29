@@ -1,5 +1,7 @@
 #!/bin/bash
+#
 # install script for running snaptool as a service, using the snaptool.service systemd unit file
+#
 
 destdir=/opt/weka/snaptool
 servicedir=/etc/systemd/system
