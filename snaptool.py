@@ -266,15 +266,16 @@ def config_parse_fs_schedules(args, config):
     return resultsdict
 
 def find_config_file(configfile):
-    # try to find the configfile in a couple locations if not found at just what was specified
+    # try to find the configfile in a couple locations if not found immediately from configfile parameter
     if os.path.exists(configfile):
         return configfile
-    search_path = ['', '.', '~/.weka', '~/.config', '.weka', '/weka', '/weka/.weka']
+    search_path = ['', '.', '~/', '/weka', '/opt/weka/snaptool']
     for p in search_path:
         target = os.path.join(p, configfile)
         if os.path.exists(target):
+            log.info(f" * Config file found: {target}")
             return target
-    log.error(f"  ***   Config file {configfile} not found!")
+    log.error(f"  ***   Config file {configfile} not found")
     return configfile
 
 def parse_snaptool_args():
