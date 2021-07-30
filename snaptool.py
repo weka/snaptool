@@ -480,7 +480,7 @@ def main():
                 sys.exit(1)
         if not connected:
             log.error(f"Connection to {cluster_connection.clusterspec} failed.  "
-                      f"Sleeping then reloading config, and trying again.")
+                      f"Sleeping for a minute, then reloading config and trying again.")
             time.sleep(60)
 
     setup_actions_log()
@@ -492,31 +492,41 @@ def main():
     # depending on timing, may end up with "already deleted" messages in logs
     delete_old_snaps(cluster_connection, schedules_dict)
 
-    reload_interval = 300
-    last_reload_time = time.time()
+    reload_interval = 30
+    file_change_time = os.path.getmtime(args.configfile)
 
     while True:
-        if (time.time() - last_reload_time) > reload_interval:
-            log.info(f"--------------- Reloading configuration file {args.configfile}")
-            config = get_configfile_config(args.configfile)
-            schedules_dict = config_parse_fs_schedules(args, config)
-            new_connection = create_cluster_connection(config)
-            if connection_info_changed(cluster_connection, new_connection):
-                log.info(f"-------------------- Reconnecting with different cluster configuration...")
-                new_connection.connect()
-                cluster_connection = new_connection
-            last_reload_time = time.time()
-
         next_snap_time, next_snaps_dict = next_snaps(schedules_dict)
-        sleep_time = round((next_snap_time - now()).total_seconds(), 1)
+        sleep_time_left = round((next_snap_time - now()).total_seconds(), 1)
         fs_msg_str = f"{ {fs:s.name for fs, s in next_snaps_dict.items()} }"
-        if sleep_time <= 0:
+        if sleep_time_left <= 0:
             sleep_msg = f"Snap now: ({next_snap_time}): {fs_msg_str}"
-            sleep_time = 0
+            sleep_time_left = 0
         else:
-            sleep_msg = f"Sleep until {next_snap_time} ({sleep_time}s), then snap: {fs_msg_str}"
+            sleep_msg = f"Sleep until {next_snap_time} ({sleep_time_left}s), then snap: {fs_msg_str}"
         log.info(sleep_msg)
-        time.sleep(sleep_time)
+        while sleep_time_left > 0:
+            sleep_time = min(reload_interval, sleep_time_left)
+            sleep_time_left = sleep_time_left - sleep_time
+            time.sleep(sleep_time)
+            if os.path.getmtime(args.configfile) > file_change_time:
+                log.info(f"--------------- Reloading configuration file {args.configfile}")
+                file_change_time = os.path.getmtime(args.configfile)
+                config = get_configfile_config(args.configfile)
+                new_schedules_dict = config_parse_fs_schedules(args, config)
+                new_connection = create_cluster_connection(config)
+                if connection_info_changed(cluster_connection, new_connection):
+                    log.info(f"-------------------- Reconnecting with new cluster configuration...")
+                    connected = new_connection.connect()
+                    if connected:
+                        cluster_connection = new_connection
+                        schedules_dict = new_schedules_dict
+                    else:
+                        log.error(f"--------------------    Reconnection failed; using existing config file info.")
+                        continue
+                else:
+                    schedules_dict = new_schedules_dict
+                break
 
         create_new_snaps(cluster_connection, next_snaps_dict, next_snap_time)
         delete_old_snaps(cluster_connection, schedules_dict)
