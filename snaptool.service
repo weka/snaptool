@@ -8,6 +8,7 @@ AssertFileIsExecutable=/opt/weka/snaptool/snaptool
 AssertFileNotEmpty=/opt/weka/snaptool/snaptool.yml
 
 [Service]
+Environment=LAUNCHED_BY_SYSTEMD=1
 WorkingDirectory=/opt/weka/snaptool
 ExecStart=/opt/weka/snaptool/snaptool -vv -c /opt/weka/snaptool/snaptool.yml
 # You should change the above line to match your environment
