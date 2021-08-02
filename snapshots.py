@@ -114,7 +114,7 @@ def parse_days(everyspec):
     result = list(map(day_to_num, l_spec))
     result.sort()
     if result[0] < 0:
-        log.error(f"Error parsing months: {everyspec}")
+        log.error(f"Error parsing days: {everyspec}")
         sys.exit(1)
     return result
 

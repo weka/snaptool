@@ -135,6 +135,46 @@ def find_config_file(configfile):
     log.error(f"  ***   Config file {configfile} not found")
     return configfile
 
+def config_parse_error(args, message):
+    logging.error(f"Error in file {args.configfile}: {message} - please fix")
+    time.sleep(10)
+
+def parse_bool(bool_str):
+    if str(bool_str).lower() in ["yes", "true", "1"]:
+        return True
+    elif str(bool_str).lower() in ["no", "false", "0"]:
+        return False
+    else:
+        log.error(f"Invalid boolean spec; should be 'yes', 'no', 'true' or 'false': {bool_str} in config file")
+        log.error(f"Assuming False")
+        return False
+
+def parse_check_top_level(args, config):
+    msg = ''
+    if 'cluster' in config:
+        msg += "'cluster' found "
+        c_found = True
+    else:
+        msg += "'cluster' not found. "
+        c_found = False
+    if 'filesystems' in config:
+        msg += f"'filesystems' found. "
+        fs_found = True
+    else:
+        msg += f"'filesystems' not found. "
+        fs_found = False
+    if 'schedules' in config:
+        msg += f"'schedules' found. "
+        s_found = True
+    else:
+        msg += f"'schedules' not found. "
+        s_found = False
+    log.info(f"Config parse: {msg}")
+    if s_found and fs_found and c_found:
+        log.info(f"Config top level check ok. {msg}")
+    else:
+        config_parse_error(args, msg)
+
 class ClusterConnection(object):
     def __init__(self, clusterspec, authfile, force_https, cert_check):
         self.weka_cluster = None
@@ -166,7 +206,7 @@ class ClusterConnection(object):
             return False
 
     def call_weka_api(self, method, parms):
-        raise_exc = None
+        raise_exc, err_type, errmsg = None, None, None
         max_retries = 20
         sleep_wait = 5
         for i in range(max_retries):
@@ -185,15 +225,16 @@ class ClusterConnection(object):
                 log.warning(f"Will try again after {sleep_wait} seconds (retry {i + 1} of {max_retries})...")
                 time.sleep(sleep_wait)
                 if i >= 2:  # first couple times just wait and try again.
-                    # After that, reconnect to cluster each failure, increase wait time
+                    # After that, reconnect to cluster each failure, increase wait time.
                     # could re-read config here in case filesystem name or authfile changed
                     # or other config fixed/changed?
-                    # but it will get re-read after 5 min anyway, so no?
-                    log.warning(f"Reconnecting to cluster before next retry")
+                    # but it will get re-read after a change/reload
+                    log.warning(f"Trying reconnect to cluster before next retry.")
                     self.connect()
                     sleep_wait = 20
                 i += 1
                 continue
+        log.error(f"call_weka_api too many failures, giving up. {method} {parms} {err_type} {errmsg}")
         raise raise_exc
 
     def check_cluster_connection(self):
@@ -245,6 +286,13 @@ class ClusterConnection(object):
                             log.info(f"Queueing fs/snap: {fs}/{s['name']} for delete")
                             background.QueueOperation(self.weka_cluster, fs, s['name'], "delete")
 
+def exit_with_connection_status(connected):
+    if connected:
+        print("Connection Succeeded")
+        sys.exit(0)
+    else:
+        print("Connection Failed")
+        sys.exit(1)
 
 class ScheduleGroup(object):
     def __str__(self):
@@ -264,6 +312,37 @@ class ScheduleGroup(object):
         logger_object.log(level, msg)
         for e in self.entries:
             logger_object.log(level, f"   {e.name}:\t{e.nextsnap_dt}\t({str(e)})")
+
+def log_snapgrouplist(snapgroup_list):
+    [sg.print_readable(log, logging.DEBUG) for sg in snapgroup_list]
+
+def update_snaptimes_sorted(snapgrouplist, now_dt):
+    unused_list = []
+    log.debug(f"schedule groups before unused check: {len(snapgrouplist)}")
+    for sg in snapgrouplist:
+        if len(sg.filesystems) == 0:
+            unused_list.append(sg)
+    log.warning(f"Unused schedules: {[s.name for s in unused_list]}")
+    for sg in unused_list:
+        snapgrouplist.remove(sg)
+    log.debug(f"schedule groups after unused check:"
+              f" {len(snapgrouplist)} {[(s.name, s.filesystems) for s in snapgrouplist]}")
+    # update snaptimes in entries and in SnapGroups, and sort
+    for sg in snapgrouplist:
+        for entry in sg.entries:
+            entry.calc_next_snaptime(now_dt)
+        sg.entries.sort(key=attrgetter('nextsnap_dt', 'sort_priority', 'no_upload'))
+        log.debug(f"Sorted entries for {sg.name} fs: {sg.filesystems} entries: {[e.sort_priority for e in sg.entries]}")
+        if len(sg.entries) > 0:
+            sg.next_snap_time = sg.entries[0].nextsnap_dt
+            sg.sort_priority = sg.entries[0].sort_priority
+            sg.no_upload = sg.entries[0].no_upload
+    snapgrouplist.sort(key=attrgetter('next_snap_time', 'sort_priority', 'no_upload'))
+    log.info(f"schedule groups after sort:"
+             f" {len(snapgrouplist)} {[(s.name, str(s.next_snap_time), s.filesystems) for s in snapgrouplist]}")
+
+def get_snapgroups_for_snaptime(snapgroup_list, snaptime):
+    return [item for item in snapgroup_list if item.next_snap_time == snaptime]
 
 class SnaptoolConfig(object):
     def __init__(self, configfile, args):
@@ -412,84 +491,6 @@ class SnaptoolConfig(object):
     def delete_old_snapshots(self):
         self.cluster_connection.delete_old_snapshots(self.schedules_dict)
 
-def config_parse_error(args, message):
-    logging.error(f"Error in file {args.configfile}: {message} - please fix")
-    time.sleep(10)
-
-def parse_check_top_level(args, config):
-    msg = ''
-    if 'cluster' in config:
-        msg += "'cluster' found "
-        c_found = True
-    else:
-        msg += "'cluster' not found. "
-        c_found = False
-    if 'filesystems' in config:
-        msg += f"'filesystems' found. "
-        fs_found = True
-    else:
-        msg += f"'filesystems' not found. "
-        fs_found = False
-    if 'schedules' in config:
-        msg += f"'schedules' found. "
-        s_found = True
-    else:
-        msg += f"'schedules' not found. "
-        s_found = False
-    log.info(f"Config parse: {msg}")
-    if s_found and fs_found and c_found:
-        log.info(f"Config top level check ok. {msg}")
-    else:
-        config_parse_error(args, msg)
-
-def parse_bool(bool_str):
-    if str(bool_str).lower() in ["yes", "true", "1"]:
-        return True
-    elif str(bool_str).lower() in ["no", "false", "0"]:
-        return False
-    else:
-        log.error(f"Invalid boolean spec; should be 'yes', 'no', 'true' or 'false': {bool_str} in config file")
-        log.error(f"Assuming False")
-        return False
-
-def update_snaptimes_sorted(snapgrouplist, now_dt):
-    unused_list = []
-    log.debug(f"schedule groups before unused check: {len(snapgrouplist)}")
-    for sg in snapgrouplist:
-        if len(sg.filesystems) == 0:
-            unused_list.append(sg)
-    log.warning(f"Unused schedules: {[s.name for s in unused_list]}")
-    for sg in unused_list:
-        snapgrouplist.remove(sg)
-    log.debug(f"schedule groups after unused check:"
-              f" {len(snapgrouplist)} {[(s.name, s.filesystems) for s in snapgrouplist]}")
-    # update snaptimes in entries and in SnapGroups, and sort
-    for sg in snapgrouplist:
-        for entry in sg.entries:
-            entry.calc_next_snaptime(now_dt)
-        sg.entries.sort(key=attrgetter('nextsnap_dt', 'sort_priority', 'no_upload'))
-        log.debug(f"Sorted entries for {sg.name} fs: {sg.filesystems} entries: {[e.sort_priority for e in sg.entries]}")
-        if len(sg.entries) > 0:
-            sg.next_snap_time = sg.entries[0].nextsnap_dt
-            sg.sort_priority = sg.entries[0].sort_priority
-            sg.no_upload = sg.entries[0].no_upload
-    snapgrouplist.sort(key=attrgetter('next_snap_time', 'sort_priority', 'no_upload'))
-    log.info(f"schedule groups after sort:"
-             f" {len(snapgrouplist)} {[(s.name, str(s.next_snap_time), s.filesystems) for s in snapgrouplist]}")
-
-def log_snapgrouplist(snapgroup_list):
-    [sg.print_readable(log, logging.DEBUG) for sg in snapgroup_list]
-
-def get_snapgroups_for_snaptime(snapgroup_list, snaptime):
-    return [item for item in snapgroup_list if item.next_snap_time == snaptime]
-#    result = []
-#    for item in snapgroup_list:
-#        if item.next_snap_time == snaptime:
-#            result.append(item)
-#        else:
-#            break
-#    return result
-
 def get_snaps_dict_by_fs(snapgroups_for_nextsnap, next_snap_time):
     results = {}
     for sg in snapgroups_for_nextsnap:
@@ -513,14 +514,6 @@ def get_fs_snaps(all_snaps, fs, schedname):
             snaps_for_fs.append(s)
     snaps_for_fs.sort(key=itemgetter('creationTime'))
     return snaps_for_fs
-
-def exit_with_connection_status(connected):
-    if connected:
-        print("Connection Succeeded")
-        sys.exit(0)
-    else:
-        print("Connection Failed")
-        sys.exit(1)
 
 def main():
     connected = False
