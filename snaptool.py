@@ -561,9 +561,9 @@ def main():
         snaptool_config.create_new_snapshots(next_snaps_dict, next_snap_time)
         snaptool_config.delete_old_snapshots()
 
-        additional_sleep_time = round((now() - next_snap_time).total_seconds(), 1)
+        additional_sleep_time = 60 - round((now() - next_snap_time).total_seconds(), 1)
         # if it has been less than a minute since the last snaps were created, wait til top of the minute
-        if additional_sleep_time < 60:
+        if additional_sleep_time > 0:
             log.info(f"Sleeping for {additional_sleep_time} seconds before next loop")
             time.sleep(additional_sleep_time)
 
