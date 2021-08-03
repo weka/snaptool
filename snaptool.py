@@ -428,6 +428,9 @@ class SnaptoolConfig(object):
         return resultsdict
 
     def reload(self):
+        if not os.path.exists(self.configfile):
+            log.error(f"Config file {self.configfile} missing.")
+            return False
         self.configfile_time = os.path.getmtime(self.configfile)
         log.info(f"--------------- Reloading configuration file {self.configfile}")
         new_stc = SnaptoolConfig(self.configfile, self.args)
@@ -455,7 +458,10 @@ class SnaptoolConfig(object):
             sleep_time = min(check_interval_seconds, sleep_time_left)
             sleep_time_left -= sleep_time
             time.sleep(sleep_time)
-            if os.path.getmtime(self.configfile) > self.configfile_time:
+            if not os.path.exists(self.configfile):
+                log.error(f"Config file {self.configfile} missing.")
+                return False
+            elif os.path.getmtime(self.configfile) > self.configfile_time:
                 use_new_config = self.reload()
                 if use_new_config:
                     return True
