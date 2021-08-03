@@ -372,6 +372,7 @@ class SnaptoolConfig(object):
     def create_cluster_connection(self):
         # returns a cluster connection object
         if self.config is None:
+            log.error(f"config empty or None")
             self.config = {}
         cluster_yaml = {}
         if 'cluster' in self.config:
@@ -437,24 +438,28 @@ class SnaptoolConfig(object):
             return False
         self.configfile_time = os.path.getmtime(self.configfile)
         log.info(f"--------------- Reloading configuration file {self.configfile}")
-        new_stc = SnaptoolConfig(self.configfile, self.args)
-        new_stc.load_config()
-        new_connection = new_stc.create_cluster_connection()
-        new_schedules_dict = new_stc.parse_fs_schedules()
-        if self.cluster_connection.connection_info_different(new_connection):
-            log.info(f"-------------------- Reconnecting with new cluster configuration...")
-            connected = new_connection.connect()
-            if connected:
-                self.config = new_stc.config
-                self.cluster_connection = new_connection
-                self.schedules_dict = new_schedules_dict
-                return connected
+        try:
+            new_stc = SnaptoolConfig(self.configfile, self.args)
+            new_stc.load_config()
+            new_connection = new_stc.create_cluster_connection()
+            new_schedules_dict = new_stc.parse_fs_schedules()
+            if self.cluster_connection.connection_info_different(new_connection):
+                log.info(f"-------------------- Reconnecting with new cluster configuration...")
+                connected = new_connection.connect()
+                if connected:
+                    self.config = new_stc.config
+                    self.cluster_connection = new_connection
+                    self.schedules_dict = new_schedules_dict
+                    return connected
+                else:
+                    log.error(f"--------------------    Reconnection failed; using existing config info.")
+                    return False
             else:
-                log.error(f"--------------------    Reconnection failed; using existing config file info.")
-                return False
-        else:
-            self.schedules_dict = new_schedules_dict
-            return True
+                self.schedules_dict = new_schedules_dict
+                return True
+        except Exception as e:
+            log.error(f"--------------------    Reload error for {self.configfile}; using existing config info. {e}")
+            return False
 
     def sleep_with_reloads(self, num_seconds, check_interval_seconds):
         sleep_time_left = num_seconds
