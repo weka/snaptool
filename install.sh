@@ -16,7 +16,11 @@ systemctl status snaptool.service | grep running
 if [[ $? == 0 ]]; then
   echo "   snaptool.service running, stopping it"
   systemctl stop snaptool.service
+fi
+if [[ -f $servicedir/snaptool.service ]]; then
+  echo "   cleaning up old service"
   systemctl disable snaptool.service
+  rm $servicedir/snaptool.service
 fi
 ymlfound="no"
 if [[ $scriptdir != $destdir ]]; then
