@@ -371,6 +371,8 @@ class SnaptoolConfig(object):
 
     def create_cluster_connection(self):
         # returns a cluster connection object
+        if self.config is None:
+            self.config = {}
         cluster_yaml = {}
         if 'cluster' in self.config:
             cluster_yaml = self.config['cluster']
