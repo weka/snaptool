@@ -407,11 +407,13 @@ class SnaptoolConfig(object):
             resultsdict[schedname] = new_group
             if "every" in schedule_spec.keys():  # single schedule item without a sub-schedule name
                 entry = snapshots.parse_schedule_entry(None, schedname, schedule_spec)
-                new_group.entries.append(entry)
+                if entry is not None:
+                    new_group.entries.append(entry)
             else:
                 for schedentryname, schedentryspec in schedule_spec.items():
                     entry = snapshots.parse_schedule_entry(schedname, schedentryname, schedentryspec)
-                    new_group.entries.append(entry)
+                    if entry is not None:
+                        new_group.entries.append(entry)
         for fs_name, fs_schedulegroups in filesystems.items():
             if isinstance(fs_schedulegroups, str):
                 fs_schedulegroups = snapshots.comma_string_to_list(fs_schedulegroups)

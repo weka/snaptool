@@ -1,7 +1,6 @@
 # rewritten for new scheduling - Bruce Clagett
 # 6/2021
 #
-import sys
 import logging
 import calendar
 from datetime import datetime
@@ -73,7 +72,8 @@ def parse_spec_int(str_num, spec_name, name, min_allowed, max_allowed):
     if result < min_allowed or result > max_allowed:
         log.error(f"Integer out of range: {result} for {spec_name} " +
                   f"in schedule {name} should be in the range [{min_allowed}-{max_allowed}]")
-        sys.exit(1)
+        log.error(f"Defaulting to {min_allowed}")
+        return min_allowed
     return result
 
 def parse_interval(interval, name):
@@ -94,8 +94,9 @@ def parse_upload(upload, name):
     elif str(upload).lower() in ["no", "false", "0"]:
         return False
     else:
-        log.error(f"Invalid upload specification, should be 'yes' or 'no': {upload} for schedule {name}")
-        sys.exit(1)
+        log.error(f"Invalid upload specification, should be yes/no/true/false: {upload} for schedule {name}")
+        log.error(f"Defaulting to false.")
+        return False
 
 def parse_time(at, name="Unknown"):
     ignored_date = "20200101 "
@@ -114,8 +115,8 @@ def parse_days(everyspec):
     result = list(map(day_to_num, l_spec))
     result.sort()
     if result[0] < 0:
-        log.error(f"Error parsing days: {everyspec}")
-        sys.exit(1)
+        log.error(f"Error parsing days: {everyspec}; defaulting to every day")
+        return [0, 1, 2, 3, 4, 5, 6]
     return result
 
 def parse_months(everyspec):
@@ -125,8 +126,8 @@ def parse_months(everyspec):
     result = list(map(month_to_num, everyspec))
     result.sort()
     if result[0] < 1:
-        log.error(f"Error parsing months: {everyspec}")
-        sys.exit(1)
+        log.error(f"Error parsing months: {everyspec}; defaulting to every month")
+        return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     return result
 
 def parse_every(every):
@@ -170,7 +171,8 @@ def parse_schedule_entry(schedule_groupname, schedule_name, sched_spec):
     if len(name) > 19:
         log.error(f"While parsing config file: for {name} (len={len(name)}):")
         log.error(f"   Length of schedule group name + name must be less than 18 characters")
-        sys.exit(1)
+        log.error(f"   Ignoring entry.")
+        return None
     every_type, every, retain, at, interval, until, upload, day = \
         parse_schedule_spec(sched_spec, name)
     if every_type == 'month':
@@ -181,7 +183,8 @@ def parse_schedule_entry(schedule_groupname, schedule_name, sched_spec):
         entry = DailyScheduleEntry(name, every, retain, at, upload)
     else:  # error
         log.error(f"Invalid 'every:' spec - schedule: {name}, every: {every}")
-        sys.exit(1)
+        log.error(f"   Ignoring entry.")
+        return None
     entry.groupname = (schedule_groupname or schedule_name)
     return entry
 
