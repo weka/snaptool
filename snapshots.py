@@ -64,7 +64,7 @@ def month_to_num(month):
         return -1
     return d
 
-def parse_spec_int(str_num, spec_name, name, min_allowed, max_allowed):
+def _parse_spec_int(str_num, spec_name, name, min_allowed, max_allowed):
     try:
         result = int(str_num)
     except Exception as exc:
@@ -77,19 +77,19 @@ def parse_spec_int(str_num, spec_name, name, min_allowed, max_allowed):
         return min_allowed
     return result
 
-def parse_interval(interval, name):
-    result = parse_spec_int(interval, 'interval', name, 1, 1439)
+def _parse_interval(interval, name):
+    result = _parse_spec_int(interval, 'interval', name, 1, 1439)
     return result
 
-def parse_retain(retain, name):
-    result = parse_spec_int(retain, 'retain', name, 0, 99)
+def _parse_retain(retain, name):
+    result = _parse_spec_int(retain, 'retain', name, 0, 99)
     return result
 
-def parse_day_of_month(dom, name):
-    result = parse_spec_int(dom, 'day_of_month', name, 1, 31)
+def _parse_day_of_month(dom, name):
+    result = _parse_spec_int(dom, 'day_of_month', name, 1, 31)
     return result
 
-def parse_upload(upload, name):
+def _parse_upload(upload, name):
     if str(upload).lower() in ["yes", "true", "1"]:
         return True
     elif str(upload).lower() in ["no", "false", "0"]:
@@ -99,7 +99,7 @@ def parse_upload(upload, name):
         log.error(f"Defaulting to false.")
         return False
 
-def parse_time(at, name="Unknown"):
+def _parse_time(at, name="Unknown"):
     ignored_date = "20200101 "
     try:
         result = parser.parse(ignored_date + at)
@@ -109,7 +109,7 @@ def parse_time(at, name="Unknown"):
         raise
     return result
 
-def parse_days(everyspec):
+def _parse_days(everyspec):
     if is_everyday(everyspec):
         return [0, 1, 2, 3, 4, 5, 6]
     l_spec = comma_string_to_list(everyspec)
@@ -120,7 +120,7 @@ def parse_days(everyspec):
         return [0, 1, 2, 3, 4, 5, 6]
     return result
 
-def parse_months(everyspec):
+def _parse_months(everyspec):
     if is_everymonth(everyspec):
         return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     everyspec = comma_string_to_list(everyspec)
@@ -131,37 +131,37 @@ def parse_months(everyspec):
         return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     return result
 
-def parse_every(every):
+def _parse_every(every):
     if is_everyday(every) or is_day_list(every):
-        return 'day', parse_days(every)
+        return 'day', _parse_days(every)
     if is_everymonth(every) or is_month_list(every):
-        return 'month', parse_months(every)
+        return 'month', _parse_months(every)
     return 'error', None
 
 
-def parse_schedule_spec(sched_spec, name):
+def _parse_schedule_spec(sched_spec, name):
     every_type, every, at, until, interval = None, None, None, None, None
     retain = 4
     day = 1
     upload = False
     if 'every' in sched_spec:
-        every_type, every = parse_every(sched_spec['every'])
+        every_type, every = _parse_every(sched_spec['every'])
     if 'retain' in sched_spec:
-        retain = parse_retain(sched_spec['retain'], name)
+        retain = _parse_retain(sched_spec['retain'], name)
     if 'at' in sched_spec:
-        at = parse_time(sched_spec['at'], name)
+        at = _parse_time(sched_spec['at'], name)
     if 'interval' in sched_spec:
-        interval = parse_interval(sched_spec['interval'], name)
+        interval = _parse_interval(sched_spec['interval'], name)
     if 'until' in sched_spec:
-        until = parse_time(sched_spec['until'], name)
+        until = _parse_time(sched_spec['until'], name)
     if 'upload' in sched_spec:
-        upload = parse_upload(sched_spec['upload'], name)
+        upload = _parse_upload(sched_spec['upload'], name)
     if 'day' in sched_spec:
-        day = parse_day_of_month(sched_spec['day'], name)
+        day = _parse_day_of_month(sched_spec['day'], name)
     if not at:
-        at = parse_time("0000", name)
+        at = _parse_time("0000", name)
     if interval and not until:
-        until = parse_time("2359", name)
+        until = _parse_time("2359", name)
     return every_type, every, retain, at, interval, until, upload, day
 
 def parse_schedule_entry(schedule_groupname, schedule_name, sched_spec):
@@ -175,7 +175,7 @@ def parse_schedule_entry(schedule_groupname, schedule_name, sched_spec):
         log.error(f"   Ignoring entry.")
         return None
     every_type, every, retain, at, interval, until, upload, day = \
-        parse_schedule_spec(sched_spec, name)
+        _parse_schedule_spec(sched_spec, name)
     if every_type == 'month':
         entry = MonthlyScheduleEntry(name, every, retain, at, day, upload)
     elif every_type == 'day' and interval:
@@ -190,7 +190,7 @@ def parse_schedule_entry(schedule_groupname, schedule_name, sched_spec):
     return entry
 
 
-class BaseScheduleEntry(object):
+class _BaseScheduleEntry(object):
     def __str__(self):
         time = str(self.at.hour).zfill(2) + str(self.at.minute).zfill(2)
         return f"{self.name}:at={time}:retain={self.retain}:upload={self.upload}"
@@ -210,14 +210,14 @@ class BaseScheduleEntry(object):
         # should never be called
         return datetime.min
 
-class MonthlyScheduleEntry(BaseScheduleEntry):
+class MonthlyScheduleEntry(_BaseScheduleEntry):
     def __str__(self):
-        return "Monthly:" + BaseScheduleEntry.__str__(self) + f":months={self.month_list}:day={self.day} "
+        return "Monthly:" + _BaseScheduleEntry.__str__(self) + f":months={self.month_list}:day={self.day} "
 
     def __init__(self, name, month_list, retain, at, day, upload, sort_priority=10):
         self.day = day
         self.month_list = month_list
-        BaseScheduleEntry.__init__(self, name, retain, at, upload, sort_priority)
+        _BaseScheduleEntry.__init__(self, name, retain, at, upload, sort_priority)
 
     def calc_next_snaptime(self, now):
         log.debug(f" (monthly) now={now}, self.nextsnap_dt={self.nextsnap_dt}")
@@ -244,13 +244,13 @@ class MonthlyScheduleEntry(BaseScheduleEntry):
         return self.nextsnap_dt
 
 
-class DailyScheduleEntry(BaseScheduleEntry):
+class DailyScheduleEntry(_BaseScheduleEntry):
     def __str__(self):
-        return "Daily:" + BaseScheduleEntry.__str__(self) + f":days={self.weekday_list}"
+        return "Daily:" + _BaseScheduleEntry.__str__(self) + f":days={self.weekday_list}"
 
     def __init__(self, name, weekday_list, retain, at, upload, sort_priority=50):
         self.weekday_list = weekday_list
-        BaseScheduleEntry.__init__(self, name, retain, at, upload, sort_priority)
+        _BaseScheduleEntry.__init__(self, name, retain, at, upload, sort_priority)
 
     def find_next_daily_snaptime(self, now, hour, minute):
         target_datetime = datetime(now.year, now.month, now.day, hour, minute)
@@ -314,83 +314,83 @@ class IntervalScheduleEntry(DailyScheduleEntry):
             self.nextsnap_dt = candidate
         return self.nextsnap_dt
 
-def test_result_message(msg, always_print=False):
+def _test_result_message(msg, always_print=False):
     if always_print:
         print('   ', msg)
     else:
         log.debug(msg)
 
-def run_schedule_test(test_name, entry, test_time, expected):
+def _run_schedule_test(test_name, entry, test_time, expected):
     always_print = (__name__ == '__main__')
-    test_result_message(f"test: {test_name}, schedule: {entry}", always_print)
-    test_result_message(f"      now: {test_time} -- expected: {expected}", always_print)
+    _test_result_message(f"test: {test_name}, schedule: {entry}", always_print)
+    _test_result_message(f"      now: {test_time} -- expected: {expected}", always_print)
     result = entry.calc_next_snaptime(test_time)
     success = "FAILED !!!!"
     if str(result) == expected:
         success = "ok"
-        test_result_message(f"{'':<31}-- nextsnap: {result}   --   {success}", always_print)
+        _test_result_message(f"{'':<31}-- nextsnap: {result}   --   {success}", always_print)
     else:
-        test_result_message(f"{success} {'':*<25} -- nextsnap: {result}   --   {success}", always_print)
+        _test_result_message(f"{success} {'':*<25} -- nextsnap: {result}   --   {success}", always_print)
         log.error(f"Self test {test_name} FAILED.  Check debug logs.")
 
 
 def run_schedule_tests():
     log.info(f"Snapshots schedule tests starting")
-    entry = MonthlyScheduleEntry("M-Jan-2-8am", parse_months('Jan'), 5, parse_time("8am"), 2, False)
-    run_schedule_test("m01", entry, datetime(2021, 6, 23, 15, 30, 59), "2022-01-02 08:00:00")
-    entry = MonthlyScheduleEntry("M-Feb-31-9:05am", parse_months('Feb'), 5, parse_time("9:05am"), 31, False)
-    run_schedule_test("m02", entry, datetime(2021, 6, 23, 15, 30, 59), "2022-02-28 09:05:00")
-    entry = MonthlyScheduleEntry("M-JunJulAug-31-7am", parse_months('Jun,Jul,Aug'), 5, parse_time("7am"), 31, False)
-    run_schedule_test("m03", entry, datetime(2021, 6, 23, 15, 30, 59), "2021-06-30 07:00:00")
-    run_schedule_test("m04", entry, datetime(2021, 6, 30, 15, 30, 59), "2021-07-31 07:00:00")
-    entry = MonthlyScheduleEntry("M-everymonth-31-7am", parse_months('month'), 5, parse_time("7am"), 31, False)
-    run_schedule_test("m05", entry, datetime(2021, 6, 23, 15, 30, 59), "2021-06-30 07:00:00")
-    run_schedule_test("m06", entry, datetime(2021, 6, 30, 7, 0, 59), "2021-06-30 07:00:00")
-    run_schedule_test("m07", entry, datetime(2021, 6, 30, 7, 1, 59), "2021-07-31 07:00:00")
-    run_schedule_test("m08", entry, datetime(2021, 12, 31, 7, 0, 59), "2021-12-31 07:00:00")
-    run_schedule_test("m09", entry, datetime(2021, 12, 31, 7, 1, 59), "2022-01-31 07:00:00")
-    entry = MonthlyScheduleEntry("M-every3-31-7am", parse_months('Jan,Apr,Jul,Oct'), 5, parse_time("2am"), 31, False)
-    run_schedule_test("m05", entry, datetime(2021, 2, 23, 0, 30, 59), "2021-04-30 02:00:00")
-    run_schedule_test("m06", entry, datetime(2021, 6, 30, 7, 0, 59), "2021-07-31 02:00:00")
-    entry = MonthlyScheduleEntry("M-Jun-23-7am", parse_months('Jun'), 5, parse_time("7am"), 23, False)
-    run_schedule_test("m10", entry, datetime(2021, 12, 31, 7, 1, 59), "2022-06-23 07:00:00")
+    entry = MonthlyScheduleEntry("M-Jan-2-8am", _parse_months('Jan'), 5, _parse_time("8am"), 2, False)
+    _run_schedule_test("m01", entry, datetime(2021, 6, 23, 15, 30, 59), "2022-01-02 08:00:00")
+    entry = MonthlyScheduleEntry("M-Feb-31-9:05am", _parse_months('Feb'), 5, _parse_time("9:05am"), 31, False)
+    _run_schedule_test("m02", entry, datetime(2021, 6, 23, 15, 30, 59), "2022-02-28 09:05:00")
+    entry = MonthlyScheduleEntry("M-JunJulAug-31-7am", _parse_months('Jun,Jul,Aug'), 5, _parse_time("7am"), 31, False)
+    _run_schedule_test("m03", entry, datetime(2021, 6, 23, 15, 30, 59), "2021-06-30 07:00:00")
+    _run_schedule_test("m04", entry, datetime(2021, 6, 30, 15, 30, 59), "2021-07-31 07:00:00")
+    entry = MonthlyScheduleEntry("M-everymonth-31-7am", _parse_months('month'), 5, _parse_time("7am"), 31, False)
+    _run_schedule_test("m05", entry, datetime(2021, 6, 23, 15, 30, 59), "2021-06-30 07:00:00")
+    _run_schedule_test("m06", entry, datetime(2021, 6, 30, 7, 0, 59), "2021-06-30 07:00:00")
+    _run_schedule_test("m07", entry, datetime(2021, 6, 30, 7, 1, 59), "2021-07-31 07:00:00")
+    _run_schedule_test("m08", entry, datetime(2021, 12, 31, 7, 0, 59), "2021-12-31 07:00:00")
+    _run_schedule_test("m09", entry, datetime(2021, 12, 31, 7, 1, 59), "2022-01-31 07:00:00")
+    entry = MonthlyScheduleEntry("M-every3-31-7am", _parse_months('Jan,Apr,Jul,Oct'), 5, _parse_time("2am"), 31, False)
+    _run_schedule_test("m05", entry, datetime(2021, 2, 23, 0, 30, 59), "2021-04-30 02:00:00")
+    _run_schedule_test("m06", entry, datetime(2021, 6, 30, 7, 0, 59), "2021-07-31 02:00:00")
+    entry = MonthlyScheduleEntry("M-Jun-23-7am", _parse_months('Jun'), 5, _parse_time("7am"), 23, False)
+    _run_schedule_test("m10", entry, datetime(2021, 12, 31, 7, 1, 59), "2022-06-23 07:00:00")
     # entry = MonthlyScheduleEntry("M-Jun-23-7am-bad-time", parse_months('Jan'), 5, parse_time("bad_time"), 23, False)
 
-    entry = DailyScheduleEntry("D-Mon-9am", parse_days('Mon'), 4, parse_time("9am"), False)
-    run_schedule_test("d01", entry, datetime(2021, 5, 29, 3, 15, 59), "2021-05-31 09:00:00")
-    run_schedule_test("d02", entry, datetime(2021, 5, 31, 21, 5, 59), "2021-06-07 09:00:00")
+    entry = DailyScheduleEntry("D-Mon-9am", _parse_days('Mon'), 4, _parse_time("9am"), False)
+    _run_schedule_test("d01", entry, datetime(2021, 5, 29, 3, 15, 59), "2021-05-31 09:00:00")
+    _run_schedule_test("d02", entry, datetime(2021, 5, 31, 21, 5, 59), "2021-06-07 09:00:00")
 
-    entry = IntervalScheduleEntry("I-MonWed-0903-1700-10min", parse_days('Mon,Wed'), 4,
-                                  parse_time("9:03am"), parse_time("5pm"), 10, False)
-    run_schedule_test("i03", entry, datetime(2021, 5, 31, 21, 5, 59), "2021-06-02 09:03:00")
-    run_schedule_test("i04", entry, datetime(2021, 6, 2, 9, 4, 59), "2021-06-02 09:13:00")
-    run_schedule_test("i05", entry, datetime(2021, 6, 2, 9, 12, 31), "2021-06-02 09:13:00")
-    run_schedule_test("i06", entry, datetime(2021, 6, 2, 9, 13, 31), "2021-06-02 09:13:00")
-    run_schedule_test("i07", entry, datetime(2021, 6, 2, 16, 42, 31), "2021-06-02 16:43:00")
-    run_schedule_test("i08", entry, datetime(2021, 6, 2, 16, 54, 31), "2021-06-07 09:03:00")
-    run_schedule_test("i09", entry, datetime(2021, 6, 3, 16, 54, 31), "2021-06-07 09:03:00")
+    entry = IntervalScheduleEntry("I-MonWed-0903-1700-10min", _parse_days('Mon,Wed'), 4,
+                                  _parse_time("9:03am"), _parse_time("5pm"), 10, False)
+    _run_schedule_test("i03", entry, datetime(2021, 5, 31, 21, 5, 59), "2021-06-02 09:03:00")
+    _run_schedule_test("i04", entry, datetime(2021, 6, 2, 9, 4, 59), "2021-06-02 09:13:00")
+    _run_schedule_test("i05", entry, datetime(2021, 6, 2, 9, 12, 31), "2021-06-02 09:13:00")
+    _run_schedule_test("i06", entry, datetime(2021, 6, 2, 9, 13, 31), "2021-06-02 09:13:00")
+    _run_schedule_test("i07", entry, datetime(2021, 6, 2, 16, 42, 31), "2021-06-02 16:43:00")
+    _run_schedule_test("i08", entry, datetime(2021, 6, 2, 16, 54, 31), "2021-06-07 09:03:00")
+    _run_schedule_test("i09", entry, datetime(2021, 6, 3, 16, 54, 31), "2021-06-07 09:03:00")
 
-    entry = IntervalScheduleEntry("I-MonWed-0903-1700-1min", parse_days('Mon,Wed'), 4,
-                                  parse_time("9:03am"), parse_time("5pm"), 1, False)
-    run_schedule_test("i11", entry, datetime(2021, 6, 3, 16, 54, 31), "2021-06-07 09:03:00")
-    run_schedule_test("i12", entry, datetime(2021, 6, 2, 16, 54, 31), "2021-06-02 16:54:00")
-    run_schedule_test("i13", entry, datetime(2021, 6, 3, 16, 54, 31), "2021-06-07 09:03:00")
-    run_schedule_test("i14", entry, datetime(2021, 6, 2, 17, 0, 31), "2021-06-02 17:00:00")
-    entry = IntervalScheduleEntry("I-Mon-Fri-0905-1700-1min", parse_days('Mon,Tue,Wed,Thu,Fri'), 4,
-                                  parse_time("9:05am"), parse_time("5pm"), 60, False)
-    run_schedule_test("i15", entry, datetime(2021, 6, 29, 11, 6, 31), "2021-06-29 12:05:00")
-    entry = IntervalScheduleEntry("I-Mon-Fri-0905-1700-1min", parse_days('Mon,Tue,Wed,Thu,Fri'), 4,
-                                  parse_time("9:05am"), parse_time("5pm"), 5, False)
-    run_schedule_test("i16", entry, datetime(2021, 6, 29, 11, 5, 59), "2021-06-29 11:05:00")
-    run_schedule_test("i17", entry, datetime(2021, 6, 29, 11, 5, 30), "2021-06-29 11:05:00")
-    run_schedule_test("i18", entry, datetime(2021, 6, 29, 11, 5, 1), "2021-06-29 11:05:00")
-    run_schedule_test("i19-microsecond-check", entry, datetime(2021, 6, 29, 11, 5, 59, 999999), "2021-06-29 11:05:00")
+    entry = IntervalScheduleEntry("I-MonWed-0903-1700-1min", _parse_days('Mon,Wed'), 4,
+                                  _parse_time("9:03am"), _parse_time("5pm"), 1, False)
+    _run_schedule_test("i11", entry, datetime(2021, 6, 3, 16, 54, 31), "2021-06-07 09:03:00")
+    _run_schedule_test("i12", entry, datetime(2021, 6, 2, 16, 54, 31), "2021-06-02 16:54:00")
+    _run_schedule_test("i13", entry, datetime(2021, 6, 3, 16, 54, 31), "2021-06-07 09:03:00")
+    _run_schedule_test("i14", entry, datetime(2021, 6, 2, 17, 0, 31), "2021-06-02 17:00:00")
+    entry = IntervalScheduleEntry("I-Mon-Fri-0905-1700-1min", _parse_days('Mon,Tue,Wed,Thu,Fri'), 4,
+                                  _parse_time("9:05am"), _parse_time("5pm"), 60, False)
+    _run_schedule_test("i15", entry, datetime(2021, 6, 29, 11, 6, 31), "2021-06-29 12:05:00")
+    entry = IntervalScheduleEntry("I-Mon-Fri-0905-1700-1min", _parse_days('Mon,Tue,Wed,Thu,Fri'), 4,
+                                  _parse_time("9:05am"), _parse_time("5pm"), 5, False)
+    _run_schedule_test("i16", entry, datetime(2021, 6, 29, 11, 5, 59), "2021-06-29 11:05:00")
+    _run_schedule_test("i17", entry, datetime(2021, 6, 29, 11, 5, 30), "2021-06-29 11:05:00")
+    _run_schedule_test("i18", entry, datetime(2021, 6, 29, 11, 5, 1), "2021-06-29 11:05:00")
+    _run_schedule_test("i19-microsecond-check", entry, datetime(2021, 6, 29, 11, 5, 59, 999999), "2021-06-29 11:05:00")
     if __name__ == "__main":   # run intentional failure to check output/logging
-        run_schedule_test("i20-fail-INTENTIONAL", entry, datetime(2021, 6, 29, 11, 5, 59), "2021-06-29 11:05:01")
+        _run_schedule_test("i20-fail-INTENTIONAL", entry, datetime(2021, 6, 29, 11, 5, 59), "2021-06-29 11:05:01")
 
-    entry = IntervalScheduleEntry("I-everyday-0903-1700-1min", parse_days('day'), 4, parse_time("0000"),
-                                  parse_time("2359"), 1, False)
-    run_schedule_test("i10-now-test", entry, datetime.now(), str(datetime.now()+relativedelta(second=0, microsecond=0)))
+    entry = IntervalScheduleEntry("I-everyday-0903-1700-1min", _parse_days('day'), 4, _parse_time("0000"),
+                                  _parse_time("2359"), 1, False)
+    _run_schedule_test("i10-now-test", entry, datetime.now(), str(datetime.now() + relativedelta(second=0, microsecond=0)))
     log.info(f"Snapshots schedule tests complete")
 
 

@@ -54,7 +54,7 @@ def parse_snaptool_args():
         print(f"{sys.argv[0]} version {VERSION}")
         sys.exit(0)
 
-    args.configfile = find_config_file(args.configfile)
+    args.configfile = _find_config_file(args.configfile)
 
     if args.verbosity == 0:
         loglevel = logging.ERROR
@@ -122,7 +122,7 @@ def set_logging_levels(snaptool_level, snapshots_level=logging.ERROR,
     logging.getLogger("background").setLevel(background_level)
     logging.getLogger("snapshots").setLevel(snapshots_level)
 
-def find_config_file(configfile):
+def _find_config_file(configfile):
     # try to find the configfile in a couple locations if not found immediately from configfile parameter
     if os.path.exists(configfile):
         return configfile
@@ -135,11 +135,11 @@ def find_config_file(configfile):
     log.error(f"  ***   Config file {configfile} not found")
     return configfile
 
-def config_parse_error(args, message):
+def _config_parse_error(args, message):
     logging.error(f"Error in file {args.configfile}: {message} - please fix")
     time.sleep(10)
 
-def parse_bool(bool_str):
+def _parse_bool(bool_str):
     if str(bool_str).lower() in ["yes", "true", "1"]:
         return True
     elif str(bool_str).lower() in ["no", "false", "0"]:
@@ -149,7 +149,7 @@ def parse_bool(bool_str):
         log.error(f"Assuming False")
         return False
 
-def parse_check_top_level(args, config):
+def _parse_check_top_level(args, config):
     msg = ''
     if 'cluster' in config:
         msg += "'cluster' found "
@@ -173,7 +173,7 @@ def parse_check_top_level(args, config):
     if s_found and fs_found and c_found:
         log.info(f"Config top level check ok. {msg}")
     else:
-        config_parse_error(args, msg)
+        _config_parse_error(args, msg)
 
 class ClusterConnection(object):
     def __init__(self, clusterspec, authfile, force_https, cert_check):
@@ -286,7 +286,7 @@ class ClusterConnection(object):
                             log.info(f"Queueing fs/snap: {fs}/{s['name']} for delete")
                             background.QueueOperation(self.weka_cluster, fs, s['name'], "delete")
 
-def exit_with_connection_status(connected):
+def _exit_with_connection_status(connected):
     if connected:
         print("Connection Succeeded")
         sys.exit(0)
@@ -313,10 +313,10 @@ class ScheduleGroup(object):
         for e in self.entries:
             logger_object.log(level, f"   {e.name}:\t{e.nextsnap_dt}\t({str(e)})")
 
-def log_snapgrouplist(snapgroup_list):
+def _log_snapgrouplist(snapgroup_list):
     [sg.print_readable(log, logging.DEBUG) for sg in snapgroup_list]
 
-def update_snaptimes_sorted(snapgrouplist, now_dt):
+def _update_snaptimes_sorted(snapgrouplist, now_dt):
     unused_list = []
     log.debug(f"schedule groups before unused check: {len(snapgrouplist)}")
     for sg in snapgrouplist:
@@ -388,11 +388,11 @@ class SnaptoolConfig(object):
             log.warning(f"No auth file specified, trying auth-token.json")
             authfile = "auth-token.json"
         if 'force_https' in cluster_yaml:
-            force_https = parse_bool(cluster_yaml['force_https'])
+            force_https = _parse_bool(cluster_yaml['force_https'])
         else:
             force_https = False
         if 'verify_cert' in cluster_yaml:
-            verify_cert = parse_bool(cluster_yaml['verify_cert'])
+            verify_cert = _parse_bool(cluster_yaml['verify_cert'])
         else:
             verify_cert = True
         result = ClusterConnection(clusterspec, authfile, force_https, verify_cert)
@@ -401,7 +401,7 @@ class SnaptoolConfig(object):
 
     def parse_fs_schedules(self):
         resultsdict = {}
-        parse_check_top_level(self.args, self.config)
+        _parse_check_top_level(self.args, self.config)
 
         filesystems = self.config['filesystems']
         schedules = self.config['schedules']
@@ -426,7 +426,7 @@ class SnaptoolConfig(object):
             log.info(f"{fs_name}, {fs_schedulegroups}")
             for sched_name in fs_schedulegroups:
                 if sched_name not in resultsdict.keys():
-                    config_parse_error(self.args, f"Schedule {sched_name}, listed for filesystem {fs_name}, not found")
+                    _config_parse_error(self.args, f"Schedule {sched_name}, listed for filesystem {fs_name}, not found")
                 else:
                     resultsdict[sched_name].filesystems.append(fs_name)
         self.schedules_dict = resultsdict
@@ -478,8 +478,8 @@ class SnaptoolConfig(object):
 
     def next_snaps(self):
         sg_list = list(self.schedules_dict.values())
-        update_snaptimes_sorted(sg_list, now())
-        log_snapgrouplist(sg_list)
+        _update_snaptimes_sorted(sg_list, now())
+        _log_snapgrouplist(sg_list)
         next_snap_time = sg_list[0].entries[0].nextsnap_dt  # because it's sorted this works
         snapgroups_for_nextsnap = get_snapgroups_for_snaptime(sg_list, next_snap_time)
         log.debug(f"next snap time: {next_snap_time}, {len(snapgroups_for_nextsnap)} snaps")
@@ -549,7 +549,7 @@ def main():
         snaptool_config.create_cluster_connection()
         connected = snaptool_config.cluster_connection.connect()
         if args.test_connection_only:
-            exit_with_connection_status(connected)
+            _exit_with_connection_status(connected)
         if not connected:
             log.error(f"Connection to {snaptool_config.cluster_connection.clusterspec} failed.  "
                       f"Sleeping for a minute, then reloading config and trying again.")
