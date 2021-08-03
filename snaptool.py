@@ -565,7 +565,8 @@ def main():
         # if it has been less than a minute since the last snaps were created, wait til top of the minute
         if additional_sleep_time > 0:
             log.info(f"Sleeping for {additional_sleep_time} seconds before next loop")
-            time.sleep(additional_sleep_time)
+            if snaptool_config.sleep_with_reloads(additional_sleep_time, reload_interval):
+                time.sleep(additional_sleep_time - reload_interval)
 
 
 if __name__ == '__main__':
