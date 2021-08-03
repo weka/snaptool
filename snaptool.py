@@ -363,8 +363,10 @@ class SnaptoolConfig(object):
             self.configfile_time = os.path.getmtime(self.configfile)
         except OSError as e:
             log.error(f"Couldn't open file {self.configfile}: {e}")
+            self.config = {}
         except yaml.YAMLError as y:
             log.error(f"YAML error in file {self.configfile}: {y}")
+            self.config = {}
         return self.config
 
     def create_cluster_connection(self):
@@ -375,7 +377,7 @@ class SnaptoolConfig(object):
         if 'hosts' in cluster_yaml:
             clusterspec = cluster_yaml['hosts']
         else:
-            log.error(f"A clusterspec is required in the config file.  Exiting")
+            log.error(f"A clusterspec is required in the config file.")
             clusterspec = ''
         if 'auth_token_file' in cluster_yaml:
             authfile = cluster_yaml['auth_token_file']
@@ -428,6 +430,9 @@ class SnaptoolConfig(object):
         return resultsdict
 
     def reload(self):
+        if not os.path.exists(self.configfile):
+            log.error(f"Config file {self.configfile} missing.")
+            return False
         self.configfile_time = os.path.getmtime(self.configfile)
         log.info(f"--------------- Reloading configuration file {self.configfile}")
         new_stc = SnaptoolConfig(self.configfile, self.args)
@@ -455,7 +460,10 @@ class SnaptoolConfig(object):
             sleep_time = min(check_interval_seconds, sleep_time_left)
             sleep_time_left -= sleep_time
             time.sleep(sleep_time)
-            if os.path.getmtime(self.configfile) > self.configfile_time:
+            if not os.path.exists(self.configfile):
+                log.error(f"Config file {self.configfile} missing.")
+                return False
+            elif os.path.getmtime(self.configfile) > self.configfile_time:
                 use_new_config = self.reload()
                 if use_new_config:
                     return True
