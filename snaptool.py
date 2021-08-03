@@ -255,10 +255,10 @@ class ClusterConnection(object):
                 "is_writable": False})
             if created_snap is None:
                 snaplog.info(f"Exists already: {fs} - {name}")
-                log.info(f"   snap {fs} {name} already exists")
+                log.info(f"   Snap {fs} {name} already exists")
             else:
                 snaplog.info(f"Created {fs} - {name}")
-                log.info(f"   snap {fs}/{name} already exists")
+                log.info(f"   Snap {fs}/{name} created")
             if upload:
                 background.QueueOperation(self.weka_cluster, fs, name, "upload")
         except Exception as exc:
