@@ -561,13 +561,13 @@ def main():
     background.intent_log.replay(snaptool_config.cluster_connection.weka_cluster)
 
     snaptool_config.schedules_dict = snaptool_config.parse_fs_schedules()
-    # at beginning so we don't wait for next snap time to clean up anyting missed from previous runs
-    # depending on timing, may end up with "already deleted" messages in logs
-    snaptool_config.delete_old_snapshots()
 
     reload_interval = 30
 
     while True:
+        # delete is before and after create in the loop to make sure we utilize sleep time for deletes
+        snaptool_config.delete_old_snapshots()
+
         next_snap_time, next_snaps_dict, sleep_time_left = snaptool_config.next_snaps()
         new_config_loaded = snaptool_config.sleep_with_reloads(sleep_time_left, reload_interval)
         if new_config_loaded:
