@@ -31,7 +31,6 @@ VERSION = "1.0.0"
 
 # get the root logger, get snaptool logger
 log = logging.getLogger()
-log.setLevel(os.getenv('INITIAL_LOG_LEVEL', logging.WARNING))
 actions_log = logging.getLogger("snapshot_actions_log")
 actions_log_file = "snaptool.log"
 
@@ -98,10 +97,10 @@ def setup_logging_initial():
         "%(asctime)s.%(msecs)03d: %(levelname)-7s:%(filename)-15s %(lineno)4d:%(funcName)s(): %(message)s"
     console_date_format = "%Y-%m-%d %H:%M:%S"
 
-    log.setLevel(logging.INFO)
+    log.setLevel(os.getenv('INITIAL_LOG_LEVEL', logging.WARNING))
     # add last resort handler - remove later if we add syslog and/or console handler instead
     log.addHandler(logging.lastResort)
-    logging.lastResort.setLevel(logging.INFO)
+    logging.lastResort.setLevel(os.getenv('INITIAL_LOG_LEVEL', logging.WARNING))
     logging.lastResort.setFormatter(logging.Formatter(console_format, console_date_format))
     log.info(f"Setting up console and syslog logging handlers")
 
