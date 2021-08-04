@@ -2,3 +2,4 @@ pyyaml==5.4
 urllib3
 python-dateutil>=2.8.1
 wekalib>=1.2.4
+importlib_metadata

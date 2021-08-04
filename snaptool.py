@@ -13,7 +13,6 @@ import platform
 import time
 import importlib_metadata
 
-import wekalib.exceptions
 import yaml
 import urllib3
 import logging.handlers
@@ -21,6 +20,8 @@ import logging.handlers
 import datetime
 from datetime import timezone
 
+import wekalib
+import wekalib.exceptions
 import wekalib.signals as signals
 import wekalib.wekacluster as wekacluster
 import snapshots
