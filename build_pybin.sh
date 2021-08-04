@@ -3,9 +3,10 @@
 #
 TOOL=snaptool
 MAIN=snaptool.py
+TARGET=tarball/$TOOL
+
 pyinstaller --hidden-import tzdata --onefile $MAIN
 
-TARGET=tarball/$TOOL
 mkdir -p $TARGET
 cp dist/$TOOL $TARGET
 cp snaptool-example.yml $TARGET

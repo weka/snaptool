@@ -11,7 +11,7 @@ import sys
 import argparse
 import platform
 import time
-import importlib.metadata
+import importlib_metadata
 
 import wekalib.exceptions
 import yaml
@@ -39,7 +39,7 @@ running_as_service = os.getenv('LAUNCHED_BY_SYSTEMD', 'NO')
 
 def version_string():
     return (f"{sys.argv[0]} version: {VERSION}"
-            f" wekalib-version={importlib.metadata.version('wekalib')}"
+            f" wekalib-version={importlib_metadata.version('wekalib')}"
             f" docker={running_in_docker}"
             f" service={running_as_service}")
 
