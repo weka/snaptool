@@ -5,7 +5,7 @@ TOOL=snaptool
 MAIN=snaptool.py
 TARGET=tarball/$TOOL
 
-pyinstaller --hidden-import tzdata --onefile $MAIN
+pyinstaller --onefile $MAIN
 
 mkdir -p $TARGET
 cp dist/$TOOL $TARGET
