@@ -11,6 +11,7 @@ import sys
 import argparse
 import platform
 import time
+import importlib.metadata
 
 import wekalib.exceptions
 import yaml
@@ -25,16 +26,22 @@ import wekalib.wekacluster as wekacluster
 import snapshots
 import background
 
-VERSION = "1.0.0 b"
+VERSION = "1.0.0"
 
 # get the root logger, get snaptool logger
 log = logging.getLogger()
-if os.environ.get('INITIAL_LOG_LEVEL') is not None:
-    log.setLevel(os.environ.get('INITIAL_LOG_LEVEL'))
-else:
-    log.setLevel(logging.WARNING)  # to start
-snaplog = logging.getLogger("snapshot_f")
-action_history_log_file = "snaptool.log"
+log.setLevel(os.getenv('INITIAL_LOG_LEVEL', logging.WARNING))
+actions_log = logging.getLogger("snapshot_actions_log")
+actions_log_file = "snaptool.log"
+
+running_in_docker = os.getenv('IN_DOCKER_CONTAINER', 'NO')
+running_as_service = os.getenv('LAUNCHED_BY_SYSTEMD', 'NO')
+
+def version_string():
+    return (f"{sys.argv[0]} version: {VERSION}"
+            f" wekalib-version={importlib.metadata.version('wekalib')}"
+            f" docker={running_in_docker}"
+            f" service={running_as_service}")
 
 def parse_snaptool_args():
     argparser = argparse.ArgumentParser(description="Weka Snapshot Management Daemon")
@@ -51,7 +58,7 @@ def parse_snaptool_args():
     args = argparser.parse_args()
 
     if args.version:
-        print(f"{sys.argv[0]} version {VERSION}")
+        print(version_string())
         sys.exit(0)
 
     args.configfile = _find_config_file(args.configfile)
@@ -71,50 +78,70 @@ def now():
     return datetime.datetime.now()
 
 def setup_actions_log():
-    resolved_fname = background.create_log_dir_file(action_history_log_file)
+    log.info(f"Setting up actions log {actions_log_file}")
+    resolved_fname = background.create_log_dir_file(actions_log_file)
 
     snaptool_f_handler = logging.handlers.RotatingFileHandler(resolved_fname,
                                                               maxBytes=10 * 1024 * 1024, backupCount=2)
     snaptool_f_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
-    snaplog.addHandler(snaptool_f_handler)
-    snaplog.setLevel(logging.INFO)
-    # snaplog file is intended for high level action logging (create/delete snapshots, etc, distinct
+    actions_log.addHandler(snaptool_f_handler)
+    actions_log.setLevel(logging.INFO)
+    # actions_log file is intended for high level action logging (create/delete snapshots, etc, distinct
     # from other logging), so don't propagate to root logger
-    snaplog.propagate = False
+    actions_log.propagate = False
 
 def setup_logging_initial():
+    syslog_format = \
+        "%(process)5s: %(levelname)-7s:%(filename)-15ss:%(lineno)4d:%(funcName)s(): %(message)s"
+    console_format = \
+        "%(asctime)s.%(msecs)03d: %(levelname)-7s:%(filename)-15s %(lineno)4d:%(funcName)s(): %(message)s"
+    console_date_format = "%Y-%m-%d %H:%M:%S"
 
-    syslog_format = "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
-    console_format = "%(asctime)s:%(levelname)7s:%(filename)s:%(lineno)s:%(funcName)s():%(message)s"
+    log.setLevel(logging.INFO)
+    # add last resort handler - remove later if we add syslog and/or console handler instead
+    log.addHandler(logging.lastResort)
+    logging.lastResort.setLevel(logging.INFO)
+    logging.lastResort.setFormatter(logging.Formatter(console_format, console_date_format))
+    log.info(f"Setting up console and syslog logging handlers")
 
-    # create handler to log to stderr
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter(console_format))
-
-    log.addHandler(console_handler)
-    log.info("--------------------------Program (re)start initial----------------------------")
-    # create handler to log to syslog
-    log.info(f"setting syslog on {platform.platform()}")
     if platform.platform()[:5] == "macOS":
         syslog_addr = "/var/run/syslog"
+        on_mac = True
     else:
         syslog_addr = "/dev/log"
-    if os.path.exists(syslog_addr):
-        syslog_handler = logging.handlers.SysLogHandler(syslog_addr)
-        syslog_handler.setFormatter(logging.Formatter(syslog_format))
-        # add handlers to root logger
-        if syslog_handler is not None:
-            log.addHandler(syslog_handler)
-    else:
-        log.info(f"{syslog_addr} not found - no syslog handler set")
+        on_mac = False
 
-def set_logging_levels(snaptool_level, snapshots_level=logging.ERROR,
-                       background_level=logging.ERROR, wekalib_level=logging.ERROR):
+    # create handler to log to stderr;
+    # skip this if running in docker on linux or service on linux to avoid double journal/docker log entries
+    if on_mac or (running_in_docker == "NO" and running_as_service == "NO"):
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter(console_format, console_date_format))
+        log.addHandler(console_handler)
+        log.removeHandler(logging.lastResort)
+        log.info(f"Console stderr handler added.")
+    else:
+        log.info(f"Running as service or in docker (not on mac) - no stderr handler added")
+
+    if os.path.exists(syslog_addr):
+        # create handler to log to syslog
+        log.info(f"setting syslog to {syslog_addr} on platform {platform.platform()}")
+        syslog_handler = logging.handlers.SysLogHandler(syslog_addr)
+        if syslog_handler is not None:
+            syslog_handler.setFormatter(logging.Formatter(syslog_format))
+            log.addHandler(syslog_handler)
+            log.removeHandler(logging.lastResort)
+            log.info(f"Syslog handler added.")
+    else:
+        log.info(f"{syslog_addr} path not found - no syslog handler added")
+    log.info("---------------------- Program initialize, log handlers added ------------")
+
+
+def setup_logging_levels(snaptool_level, snapshots_level=logging.ERROR,
+                         background_level=logging.ERROR, wekalib_level=logging.ERROR):
     log.setLevel(snaptool_level)
-    log.info("-------------------------Setting new log levels-------------------------------")
+    log.info(" ---------------------- Setting new log levels ----------------------------")
 
     urllib3.add_stderr_logger(level=logging.ERROR)
-
     logging.getLogger("wekalib.wekacluster").setLevel(wekalib_level)
     logging.getLogger("wekalib.wekaapi").setLevel(wekalib_level)
     logging.getLogger("wekalib.sthreads").setLevel(wekalib_level)
@@ -246,7 +273,7 @@ class ClusterConnection(object):
         try:
             status = self.call_weka_api(method="snapshots_list", parms={'file_system': fs, 'name': name})
             if len(status) == 1:
-                snaplog.info(f"Exists already: {fs} - {name}")
+                actions_log.info(f"Exists already: {fs} - {name}")
                 return
             created_snap = self.call_weka_api(method="snapshot_create", parms={
                 "file_system": fs,
@@ -254,10 +281,10 @@ class ClusterConnection(object):
                 "access_point": access_point_name,
                 "is_writable": False})
             if created_snap is None:
-                snaplog.info(f"Exists already: {fs} - {name}")
+                actions_log.info(f"Exists already: {fs} - {name}")
                 log.info(f"   Snap {fs} {name} already exists")
             else:
-                snaplog.info(f"Created {fs} - {name}")
+                actions_log.info(f"Created {fs} - {name}")
                 log.info(f"   Snap {fs}/{name} created")
             if upload:
                 background.QueueOperation(self.weka_cluster, fs, name, "upload")
@@ -539,7 +566,8 @@ def main():
     setup_logging_initial()
     # handle signals (ie: ^C and such)
     signals.signal_handling()
-    set_logging_levels(loglevel, snapshots_level=loglevel, background_level=loglevel)
+    setup_logging_levels(loglevel, snapshots_level=loglevel, background_level=loglevel)
+    log.info(f"Version info: {version_string()}")
     snapshots.run_schedule_tests()    # scheduling computation self tests for snapshots module
 
     snaptool_config = SnaptoolConfig(args.configfile, args)

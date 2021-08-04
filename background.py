@@ -15,12 +15,12 @@ import uuid
 import logging
 import string
 
-log = logging.getLogger(__name__)
-snaplog = logging.getLogger("snapshot_f")
 logdir = "logs"
-background_q = queue.Queue()
+log = logging.getLogger(__name__)
+actions_log = logging.getLogger("snapshot_actions_log")
 intent_log_filename = "snap_intent_q.log"
 intent_log = 'Global uninitialized'
+background_q = queue.Queue()
 
 def create_log_dir_file(filename):
     prevmask = os.umask(0)
@@ -266,7 +266,7 @@ def background_processor():
 
             log.info(f"uploading snapshot {snap_obj.fsname}/{snap_obj.snapname}")
             intent_log.put_record(snap_obj.uuid, snap_obj.fsname, snap_obj.snapname, "upload", "in-progress")
-            snaplog.info(f"Upload initiated: {snap_obj.fsname} - {snap_obj.snapname} locator: '{snaps['locator']}'")
+            actions_log.info(f"Upload initiated: {snap_obj.fsname} - {snap_obj.snapname} locator: '{snaps['locator']}'")
 
         elif snap_stat["stowStatus"] == "SYNCHRONIZED":
             # we should only ever get here when replaying the log and this one was already in progress
@@ -305,7 +305,7 @@ def background_processor():
                 elif this_snap["stowStatus"] == "SYNCHRONIZED":
                     log.info(f"upload of {snap_obj.fsname}/{snap_obj.snapname} complete.")
                     intent_log.put_record(snap_obj.uuid, snap_obj.fsname, snap_obj.snapname, "upload", "complete")
-                    snaplog.info(f"Upload complete: {snap_obj.fsname} - {snap_obj.snapname} "
+                    actions_log.info(f"Upload complete: {snap_obj.fsname} - {snap_obj.snapname} "
                                  f"locator: '{this_snap['locator']}'")
                     return
                 else:
@@ -345,7 +345,7 @@ def background_processor():
             return
 
         intent_log.put_record(snap_obj.uuid, snap_obj.fsname, snap_obj.snapname, "delete", "in-progress")
-        snaplog.info(f"Delete started: {snap_obj.fsname} - {snap_obj.snapname} locator: '{locator}'")
+        actions_log.info(f"Delete started: {snap_obj.fsname} - {snap_obj.snapname} locator: '{locator}'")
 
         # delete may take some time, particularly if uploaded to obj and it's big
         time.sleep(1)  # give just a little time, just in case it's instant
@@ -364,7 +364,7 @@ def background_processor():
             if this_snap is None:
                 intent_log.put_record(snap_obj.uuid, snap_obj.fsname, snap_obj.snapname, "delete", "complete")
                 log.info(f"     Snap {snap_obj.fsname}/{snap_obj.snapname} successfully deleted")
-                snaplog.info(f"Delete complete: {snap_obj.fsname} - {snap_obj.snapname} locator: '{locator}'")
+                actions_log.info(f"Delete complete: {snap_obj.fsname} - {snap_obj.snapname} locator: '{locator}'")
                 return
             # track how many times we're checking the status
             loopcount += 1
