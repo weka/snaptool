@@ -11,24 +11,27 @@ A solution that implements snapshot management for Weka Clusters
 - Optionally, snapshots can automatically be uploaded to an S3 Object Store, for tiering enabled file systems.  Snapshots in object stores are also deleted based on the retention rule for a schedule.
 - Snapshots are created per schedules.   Uploads to object stores and deletes occur in a background process via a background queue.
 
+- Note: Configuration files from releases before 1.0.0 are not compatible with 1.0.0 and above.   They will need to be modified to use the new syntax.
+
 # Installation
 
 The latest binary release of snaptool can be downloaded as a tarball from https://github.com/weka/snaptool/releases/latest.  Download it to a temporary location or to /opt/weka.
 
 Before proceeding, make a copy of your existing snaptool.yml, if a previous version exists.   
 
-Next, untar the snaptool bundle:
+Next, extract the snaptool bundle:
 
     tar xvf snaptool-<version>.tar
 
-The extracted configuration file snaptool/snaptool.yml file will now need to be edited for the local environment (or replaced if you have a previous, compatible, version).  See details below for configuration syntax.  
+The extracted configuration file snaptool/snaptool.yml file should now need to be edited for the local environment (or replaced if you have a previous, compatible, version).  See details below for configuration syntax.  
 
 
 Tips:
 - snaptool will not start without the ability to connect to a cluster, so you must edit the yml file to include valid cluster hosts
-- If an older version of snaptool exists, please stop all related processes before running proceeding, and backup your yml file
+- If an older version of snaptool exists, please stop all related processes before installing, and backup your yml file
 - Run the installer with administrator/root privileges
-- the snaptool.service file can be edited if other snaptool command line options need to be provided
+- The snaptool.service file can be edited if other snaptool command line options need to be provided
+- The installer will try to preserve an existing snaptool.yml file, if it exists in the install destination directory
 
 Once the snaptool.yml file contains connection, filesystem, and schedule information for the local weka cluster, snaptool can be installed as a systemd service as follows:
   
@@ -36,11 +39,11 @@ Once the snaptool.yml file contains connection, filesystem, and schedule informa
     ./install.sh
 
 The installer does the following:
-- modifies the systemd unit file (snaptool.service) if the installation target directory isn't /opt/weka/snaptool
-- copies the executable and yml file to the installation directory (typically /opt/weka/snaptool), if the untar location isn't the installation directory 
-- briefly tests connectivity to the weka cluster, to validate cluster settings in the snaptool.yml file
-- copies the systemd unit file (snaptool.service) to /etc/systemd/system
-- enables and starts the snaptool.service service via systemctl
+- Modifies the systemd unit file (snaptool.service) to the installation target directory if it isn't /opt/weka/snaptool.
+- Copies the executable and yml file to the installation directory (typically /opt/weka/snaptool) - if a configuration yml file exists, the installer attempts to preserve it
+- Briefly tests connectivity to the weka cluster, to validate cluster settings in the snaptool.yml file
+- Copies the systemd unit file (snaptool.service) to /etc/systemd/system
+- Enables and starts the snaptool.service service via systemctl
 
 Snaptool can also be run in docker - if that is the desired deployment, see the "Running in Docker" section below.
 
@@ -191,7 +194,12 @@ Examples:
 
 # Running in Docker
 
-The latest release of snaptool can be downloaded from docker hub.   A sample docker-run.sh file that provides the necessary setup to run the snaptool docker image is included in the binary release mentioned above; its contents are shown here also.
+The latest release of snaptool can be downloaded from docker hub ('docker pull wekasolutions/snaptool').   A sample docker-run.sh file that provides the necessary parameters to run the snaptool docker image is included in the binary release mentioned above; its contents are shown here also.  A sample snaptool.yml is also included.
+
+The configuration yml file is expected to be in the current directory when running within docker.
+
+Logs will be created in a 'logs' directory in the current directory.
+
 
 
 ```
@@ -199,24 +207,27 @@ The latest release of snaptool can be downloaded from docker hub.   A sample doc
 # sample file for running snaptool as a docker container
 # the wekasolutions/snaptool docker image can be downloaded from docker hub
 #
-config_dir=$PWD
-auth_dir=$HOME/.weka/
+# the config_file is expected to be in the current directory when running within docker.
+# logs will be created in a 'logs' directory in the current directory.
+#
+config_file=snaptool.yml
 time_zone=US/Eastern
+auth_dir=$HOME/.weka
 
-if [[ ! -f $config_dir/snaptool.yml ]]; then echo "'snaptool.yml' not found in '$config_dir'"; exit 1; fi
+mkdir -p logs ; chown 472 logs
 
+if [[ ! -f $config_file ]]; then echo "Config file '$config_file' missing.  Exiting."; exit 1; fi
+
+# some OS variants may not have this syslog option; if it doesn't exist, don't set it up
 if [[ -e /dev/log ]]; then syslog_mount='--mount type=bind,source=/dev/log,target=/dev/log'; fi
-if [[ ! -f $config_dir/snaptool.log ]]; then touch $config_dir/snaptool.log; fi
-if [[ ! -f $config_dir/snap_intent_q.log ]]; then touch $config_dir/snap_intent_q.log; fi
 
-docker run -d --network='host' \
-    -e TZ=$time_zone \
+docker run --network='host' --restart always -e TZ=$time_zone -d \
     $syslog_mount \
-    --mount type=bind,source=$auth_dir,target=/weka/.weka/ \
-    --mount type=bind,source=$config_dir,target=/weka \
-    --mount type=bind,source=/etc/hosts,target=/etc/hosts \
+    --mount type=bind,source=$PWD,target=/weka \
+    --mount type=bind,source=$auth_dir,target=/weka/.weka,readonly \
+    --mount type=bind,source=/etc/hosts,target=/etc/hosts,readonly \
     --name weka_snaptool \
-    wekasolutions/snaptool -vv
+    wekasolutions/snaptool -vv -c $config_file
 
 ```
 
