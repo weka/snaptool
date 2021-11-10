@@ -203,19 +203,20 @@ def _parse_check_top_level(args, config):
         _config_parse_error(args, msg)
 
 class ClusterConnection(object):
-    def __init__(self, clusterspec, authfile, force_https, cert_check):
+    def __init__(self, clusterspec, authfile, force_https, cert_check, timeout):
         self.weka_cluster = None
         self.clusterspec = clusterspec
         self.authfile = authfile
         self.force_https = force_https
         self.verify_cert = cert_check
         self.connect_datetime = datetime.datetime.min
+        self.timeout = timeout
 
     def connect(self):
         connected = False
         try:
             log.info("Attempting cluster connection...")
-            self.weka_cluster = wekacluster.WekaCluster(self.clusterspec, self.authfile,
+            self.weka_cluster = wekacluster.WekaCluster(self.clusterspec, self.authfile, timeout=self.timeout,
                                                         force_https=self.force_https, verify_cert=self.verify_cert)
             self.connect_datetime = now()
             connected = self.weka_cluster
@@ -422,7 +423,11 @@ class SnaptoolConfig(object):
             verify_cert = _parse_bool(cluster_yaml['verify_cert'])
         else:
             verify_cert = True
-        result = ClusterConnection(clusterspec, authfile, force_https, verify_cert)
+        if 'timeout' in cluster_yaml:
+            timeout = cluster_yaml['timeout']
+        else:
+            timeout = 30.0
+        result = ClusterConnection(clusterspec, authfile, force_https, verify_cert, timeout)
         self.cluster_connection = result
         return result
 
