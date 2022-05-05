@@ -286,8 +286,13 @@ class ClusterConnection(object):
             else:
                 actions_log.info(f"Created {fs} - {name}")
                 log.info(f"   Snap {fs}/{name} created")
-            if upload:
-                background.QueueOperation(self.weka_cluster, fs, name, "upload")
+            upload_op = False
+            if upload is True or upload is 'LOCAL':
+                upload_op = "upload"
+            elif upload is 'REMOTE':
+                upload_op = "upload-remote"
+            if upload_op:
+                background.QueueOperation(self.weka_cluster, fs, name, upload_op)
         except Exception as exc:
             log.error(f"Error creating snapshot {name} on filesystem {fs}: {exc}")
 
@@ -590,6 +595,13 @@ def main():
 
     snaptool_config.schedules_dict = snaptool_config.parse_fs_schedules()
 
+    obs_list = snaptool_config.cluster_connection.call_weka_api("obs_s3_list", {})
+    for obs in obs_list:
+        log.info(f"Found s3 obs: {obs['obs_site']}, name: {obs['obs_name']}, bucket: {obs['bucket']}")
+    fs_list = snaptool_config.cluster_connection.call_weka_api("filesystems_list", {})
+    for fs in fs_list:
+        log.info(f"fs {fs['name']}: obs_buckets: {fs['obs_buckets']}")
+   
     reload_interval = 30
 
     while True:
@@ -602,11 +614,11 @@ def main():
             continue
 
         snaptool_config.create_new_snapshots(next_snaps_dict, next_snap_time)
-        snaptool_config.delete_old_snapshots()
 
         additional_sleep_time = 60 - round((now() - next_snap_time).total_seconds(), 1)
         # if it has been less than a minute since the last snaps were created, wait til top of the minute
         if additional_sleep_time > 0:
+            snaptool_config.delete_old_snapshots()
             log.info(f"Sleeping for {additional_sleep_time} seconds before next loop")
             if snaptool_config.sleep_with_reloads(additional_sleep_time, reload_interval):
                 time.sleep(additional_sleep_time - reload_interval)

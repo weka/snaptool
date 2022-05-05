@@ -92,6 +92,10 @@ def _parse_day_of_month(dom, name):
 def _parse_upload(upload, name):
     if str(upload).lower() in ["yes", "true", "1"]:
         return True
+    elif str(upload).lower() in ["local"]:
+        return 'LOCAL'
+    elif str(upload).lower() in ["remote"]:
+        return 'REMOTE'
     elif str(upload).lower() in ["no", "false", "0"]:
         return False
     else:
