@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block inhead %}
+<meta http-equiv="refresh" content="30">
+{% endblock %}
+
+{% block header %}
+  <h1>Snaptool Status</h1>
+{% endblock %}
+
+{% block content %}
+{% if configobj.ignored_errors %}
+<h3 style="color:red;">Ignored errors in snaptool.yml:</h3>
+  {% for m in configobj.ignored_errors %}
+    <li>{{ m }}</li>
+  {% endfor %}
+{% endif %}
+
+    
+<br><br>
+<p>Next snap time: {{ configobj.next_snap_time }}</p>
+<p>Upload/Delete queue size: {{ q_size }}</p>
+<h4>Recent progress messages:</h4>
+<div style="height:12em;overflow-y:auto;display:flex;flex-direction: column-reverse;">
+  <pre>{{ progress }}</pre>
+</div>
+
+
+<h4>Cluster connection info:</h4>
+  <br>&emsp; Hosts: {{ configobj.cluster_connection.clusterspec }}
+  <br>&emsp; Authfile: {{ configobj.cluster_connection.authfile }}
+  <br>&emsp; Configuration file modify time: {{ configobj.configfile_time.strftime("%x %X") }}
+  <br>&emsp; Cluster connection time: {{ configobj.cluster_connection.connect_datetime.strftime("%x %X") }}
+  
+<h4>More information:</h4>
+<br>&emsp; <a href="{{ url_for('snaptool_config_summary') }}">Show Configuration Summary</a> 
+<br>&emsp; Show config file: <a href="{{ url_for('show_config_file') }}"> {{ configobj.configfile }} </a>
+</p>
+<p>&emsp; Show actions log: <a href="{{ url_for('show_actions_log') }}">{{ configobj.resolved_actions_log }}</a>
+<p>
+</p>
+{% endblock %}
+<br><br> <br>

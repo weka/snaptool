@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block inhead %}
+<meta http-equiv="refresh" content="60">
+{% endblock %}
+
+{% block header %}
+  <h1>{% block title %}Snaptool Actions Log{% endblock %}</h1>
+{% endblock %}
+
+{% block content %}
+<pre>
+{{ logtext }}
+</pre>
+{% endblock %}
