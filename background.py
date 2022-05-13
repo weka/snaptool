@@ -310,9 +310,11 @@ def background_processor():
             # log that it's been told to upload
             # log.debug(f"snapshots = {snapshots}") # ***vince - check the return to make sure it's been told to upload
 
-            log.info(f"Queueing snapshot {op} for {fsname}/{snapname}")
+            log.info(f"Storing intent for snapshot {op} for {fsname}/{snapname}")
             intent_log.put_record(uuid, fsname, snapname, op, "in-progress")
-            actions_log.info(f"{op} initiated: {fsname} - {snapname} locator: '{locator}'")
+            message = f"{op} initiated: {fsname} - {snapname} locator: '{locator}'"
+            bq.message(message)
+            actions_log.info(message)
 
         elif stowStatus == "SYNCHRONIZED":
             # we should only ever get here when replaying the log and this one was already in progress
