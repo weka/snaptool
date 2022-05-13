@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+
+{% block header %}
+  <h1>Snaptool Configuration Summary</h1>
+{% endblock %}
+
+{% block content %}
+{% if configobj.ignored_errors %}
+<h3 style="color:red;">Ignored errors in snaptool.yml:</h3>
+  {% for m in configobj.ignored_errors %}
+    <li>{{ m }}</li>
+  {% endfor %}
+{% endif %}
+<br>
+<br>
+<h2>Active Snapshot Schedules:</h2>
+{% for k,group in configobj.schedules_dict_used.items() %}
+    <h4>{{ group.name }}</h4>
+    &emsp; Filesystems: 
+    {% for fs in group.filesystems %}
+        {{ fs }}
+    {% endfor %}
+    {% for sched in group.entries %}
+        <br>&emsp; 
+        {{ sched.get_html() }}
+    {% endfor %}
+{% endfor %}
+<br>
+<br>
+<br>
+<h2 style="color:darkslategray;">Unused snapshot schedules (not assigned to filesystems):</h2>
+{% for k,group in configobj.schedules_dict_unused.items() %}
+    <h4 style="color:darkslategray;">{{ group.name }}</h4>
+    &emsp; (no filesystems)
+    {% for fs in group.filesystems %}
+        {{ fs }}
+    {% endfor %}
+    {% for sched in group.entries %}
+        <br>&emsp; 
+        {{ sched.get_html() }}
+    {% endfor %}
+{% endfor %}
+{% endblock %}

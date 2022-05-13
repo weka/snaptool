@@ -9,6 +9,7 @@ A solution that implements snapshot management for Weka Clusters
 - Retention rules - each schedule controls the number of snapshot copies to retain.
 - Expired snapshots are automatically deleted as the schedule exceeds the specified retention.  
 - Optionally, snapshots can automatically be uploaded to an S3 Object Store, for tiering enabled file systems.  Snapshots in object stores are also deleted based on the retention rule for a schedule.
+- Optionally, snapshots can be uploaded to a remote S3 Object Store, as a back up.  When snapshots are deleted locally, these remote snapshot copies are not deleted.  They are available for restore via the locator ID beyond the life of the original snapshot.
 - Snapshots are created per schedules.   Uploads to object stores and deletes occur in a background process via a background queue.
 
 - Note: Configuration files from releases before 1.0.0 are not compatible with 1.0.0 and above.   They will need to be modified to use the new syntax.
@@ -121,7 +122,7 @@ Each schedule has the following syntax:
 
             retain: defaults to 4.  This is the number of snapshots kept. 0 disables the schedule. 
 
-            upload: defaults to no/False - yes/True uploads the snapshot to the object store associated with the filesystem
+            upload: defaults to no/False - 'Local' or 'True' uploads a copy of the snapshot to the local object store associated with the filesystem (the tiering object store).  'Remote' will upload a copy of the snapshot to the object store designated as 'Remote' for the filesystem.
 
 
 

@@ -26,6 +26,7 @@ import wekalib.signals as signals
 import wekalib.wekacluster as wekacluster
 import snapshots
 import background
+import flask_ui
 
 VERSION = "1.0.0"
 
@@ -33,6 +34,7 @@ VERSION = "1.0.0"
 log = logging.getLogger()
 actions_log = logging.getLogger("snapshot_actions_log")
 actions_log_file = "snaptool.log"
+actions_log_resolved_file = None
 
 running_in_docker = os.getenv('IN_DOCKER_CONTAINER', 'NO')
 running_as_service = os.getenv('LAUNCHED_BY_SYSTEMD', 'NO')
@@ -80,6 +82,9 @@ def now():
 def setup_actions_log():
     log.info(f"Setting up actions log {actions_log_file}")
     resolved_fname = background.create_log_dir_file(actions_log_file)
+    log.info(f"actions log file: {resolved_fname}")
+    global actions_log_resolved_file
+    actions_log_resolved_file = resolved_fname
 
     snaptool_f_handler = logging.handlers.RotatingFileHandler(resolved_fname,
                                                               maxBytes=10 * 1024 * 1024, backupCount=2)
@@ -164,7 +169,6 @@ def _find_config_file(configfile):
 
 def _config_parse_error(args, message):
     logging.error(f"Error in file {args.configfile}: {message} - please fix")
-    time.sleep(10)
 
 def _parse_bool(bool_str):
     if str(bool_str).lower() in ["yes", "true", "1"]:
@@ -273,7 +277,7 @@ class ClusterConnection(object):
         try:
             status = self.call_weka_api(method="snapshots_list", parms={'file_system': fs, 'name': name})
             if len(status) == 1:
-                actions_log.info(f"Exists already: {fs} - {name}")
+                actions_log.info(f"Snapshot exists: {fs} - {name}")
                 return
             created_snap = self.call_weka_api(method="snapshot_create", parms={
                 "file_system": fs,
@@ -281,8 +285,8 @@ class ClusterConnection(object):
                 "access_point": access_point_name,
                 "is_writable": False})
             if created_snap is None:
-                actions_log.info(f"Exists already: {fs} - {name}")
-                log.info(f"   Snap {fs} {name} already exists")
+                actions_log.info(f"Snapshot exists: {fs} - {name}")
+                log.info(f"   Snap {fs}/{name} already exists")
             else:
                 actions_log.info(f"Created {fs} - {name}")
                 log.info(f"   Snap {fs}/{name} created")
@@ -376,6 +380,9 @@ def _update_snaptimes_sorted(snapgrouplist, now_dt):
 def get_snapgroups_for_snaptime(snapgroup_list, snaptime):
     return [item for item in snapgroup_list if item.next_snap_time == snaptime]
 
+def get_file_mtime(path):
+    mtimeos = os.path.getmtime(path)
+    return datetime.datetime.fromtimestamp(mtimeos)
 class SnaptoolConfig(object):
     def __init__(self, configfile, args):
         self.args = args
@@ -384,6 +391,13 @@ class SnaptoolConfig(object):
         self.config = None
         self.cluster_connection = None
         self.schedules_dict = None
+        self.schedules_dict_unused = None
+        self.schedules_dict_used = None       # if a fs references it
+        self.ignored_errors = []
+        self.resolved_actions_log = None
+        self.next_snap_time = datetime.datetime.now()
+        self.next_snaps_dict = {}
+        self.background_progress_message = ""
 
     def load_config(self):
         log.debug(f"Loading config file {self.configfile}")
@@ -392,7 +406,7 @@ class SnaptoolConfig(object):
                 config = yaml.load(stream=f, Loader=yaml.BaseLoader)
             log.debug(config)
             self.config = config
-            self.configfile_time = os.path.getmtime(self.configfile)
+            self.configfile_time = get_file_mtime(self.configfile)
         except OSError as e:
             log.error(f"Couldn't open file {self.configfile}: {e}")
             self.config = {}
@@ -412,12 +426,16 @@ class SnaptoolConfig(object):
         if 'hosts' in cluster_yaml:
             clusterspec = cluster_yaml['hosts']
         else:
-            log.error(f"A clusterspec is required in the config file.")
+            m = f"A clusterspec is required in the config file."
+            background.background_q.message(m)
+            log.error(m)
             clusterspec = ''
         if 'auth_token_file' in cluster_yaml:
             authfile = cluster_yaml['auth_token_file']
         else:
-            log.warning(f"No auth file specified, trying auth-token.json")
+            m = f"No auth file specified, trying auth-token.json"
+            log.warning(m)
+            background.background_q.message(m)
             authfile = "auth-token.json"
         if 'force_https' in cluster_yaml:
             force_https = _parse_bool(cluster_yaml['force_https'])
@@ -443,14 +461,18 @@ class SnaptoolConfig(object):
             new_group = ScheduleGroup(schedname)
             resultsdict[schedname] = new_group
             if "every" in schedule_spec.keys():  # single schedule item without a sub-schedule name
-                entry = snapshots.parse_schedule_entry(None, schedname, schedule_spec)
+                entry, err_reason = snapshots.parse_schedule_entry(None, schedname, schedule_spec)
                 if entry is not None:
                     new_group.entries.append(entry)
+                else:
+                    self.ignored_errors.append(err_reason)
             else:
                 for schedentryname, schedentryspec in schedule_spec.items():
-                    entry = snapshots.parse_schedule_entry(schedname, schedentryname, schedentryspec)
+                    entry, err_reason = snapshots.parse_schedule_entry(schedname, schedentryname, schedentryspec)
                     if entry is not None:
                         new_group.entries.append(entry)
+                    else:
+                        self.ignored_errors.append(err_reason)
         for fs_name, fs_schedulegroups in filesystems.items():
             if isinstance(fs_schedulegroups, str):
                 fs_schedulegroups = snapshots.comma_string_to_list(fs_schedulegroups)
@@ -458,36 +480,49 @@ class SnaptoolConfig(object):
             log.info(f"{fs_name}, {fs_schedulegroups}")
             for sched_name in fs_schedulegroups:
                 if sched_name not in resultsdict.keys():
+                    self.ignored_errors.append(f"Schedule '{sched_name}' is listed for filesystem {fs_name} but not defined")
                     _config_parse_error(self.args, f"Schedule {sched_name}, listed for filesystem {fs_name}, not found")
                 else:
                     resultsdict[sched_name].filesystems.append(fs_name)
         self.schedules_dict = resultsdict
+        self.schedules_dict_unused = {k:v for k,v in resultsdict.items() if not v.filesystems}
+        self.schedules_dict_used = {k:v for k,v in resultsdict.items() if v.filesystems}
         return resultsdict
+    
+    def update_schedule_changes(self, new_schedules, new_unused, new_used, new_ignored):
+        self.schedules_dict = new_schedules
+        self.schedules_dict_unused = new_unused
+        self.schedules_dict_used = new_used
+        self.ignored_errors = new_ignored
 
     def reload(self):
         if not os.path.exists(self.configfile):
             log.error(f"Config file {self.configfile} missing.")
             return False
-        self.configfile_time = os.path.getmtime(self.configfile)
-        log.info(f"--------------- Reloading configuration file {self.configfile}")
+        self.configfile_time = get_file_mtime(self.configfile)
+        log.info(f"--------------- (Re)loading configuration file {self.configfile}")
         try:
             new_stc = SnaptoolConfig(self.configfile, self.args)
             new_stc.load_config()
             new_connection = new_stc.create_cluster_connection()
-            new_schedules_dict = new_stc.parse_fs_schedules()
-            if self.cluster_connection.connection_info_different(new_connection):
-                log.info(f"-------------------- Reconnecting with new cluster configuration...")
+            new_stc.parse_fs_schedules()
+            if not self.cluster_connection or self.cluster_connection.connection_info_different(new_connection):
+                log.info(f"-------------------- (Re)connecting with new cluster configuration...")
                 connected = new_connection.connect()
-                if connected:
+                if connected or not self.config:
                     self.config = new_stc.config
                     self.cluster_connection = new_connection
-                    self.schedules_dict = new_schedules_dict
+                    self.update_schedule_changes(new_stc.schedules_dict,
+                        new_stc.schedules_dict_unused, new_stc.schedules_dict_used, 
+                        new_stc.ignored_errors)
                     return connected
                 else:
                     log.error(f"--------------------    Reconnection failed; using existing config info.")
                     return False
             else:
-                self.schedules_dict = new_schedules_dict
+                self.update_schedule_changes(new_stc.schedules_dict,
+                    new_stc.schedules_dict_unused, new_stc.schedules_dict_used, 
+                    new_stc.ignored_errors)
                 return True
         except Exception as e:
             log.error(f"--------------------    Reload error for {self.configfile}; using existing config info. {e}")
@@ -502,7 +537,7 @@ class SnaptoolConfig(object):
             if not os.path.exists(self.configfile):
                 log.error(f"Config file {self.configfile} missing.")
                 return False
-            elif os.path.getmtime(self.configfile) > self.configfile_time:
+            elif get_file_mtime(self.configfile) > self.configfile_time:
                 use_new_config = self.reload()
                 if use_new_config:
                     return True
@@ -525,6 +560,9 @@ class SnaptoolConfig(object):
         else:
             sleep_msg = f"Sleep until {next_snap_time} ({sleep_time_left}s), then snap: {snaps_msg_str}"
         log.info(sleep_msg)
+        background.background_q.message(sleep_msg)
+        self.next_snap_time = next_snap_time
+        self.next_snaps_dict = next_snaps_dict
         return next_snap_time, next_snaps_dict, sleep_time_left
 
     def create_new_snapshots(self, next_snaps_dict, next_snap_time):
@@ -577,23 +615,32 @@ def main():
 
     snaptool_config = SnaptoolConfig(args.configfile, args)
 
+    setup_actions_log()
+    snaptool_config.resolved_actions_log = actions_log_resolved_file
+    if flask_ui.config == None:
+        flask_ui.run_ui(snaptool_config)
+    # snaptool_config.load_config()
+    # snaptool_config.create_cluster_connection()
     while not connected:
-        snaptool_config.load_config()
-        snaptool_config.create_cluster_connection()
-        connected = snaptool_config.cluster_connection.connect()
+        connected = snaptool_config.reload()
         if args.test_connection_only:
             _exit_with_connection_status(connected)
         if not connected:
-            log.error(f"Connection to {snaptool_config.cluster_connection.clusterspec} failed.  "
-                      f"Sleeping for a minute, then reloading config and trying again.")
+            cerror = f"Connection to {snaptool_config.cluster_connection.clusterspec} failed.  " \
+                     f"Sleeping for a minute, then reloading config and trying again."
+            background.background_q.message(cerror)
+            log.info(cerror)
             time.sleep(60)
+        else:
+            background.background_q.message("Connected to cluster")
 
-    setup_actions_log()
-    log.warning("Initializing background q and replaying operation intent log...")
+    m = "Initializing background q and replaying operation intent log..."
+    log.info(m)
+    background.background_q.message(m)
     background.init_background_q()
     background.intent_log.replay(snaptool_config.cluster_connection.weka_cluster)
 
-    snaptool_config.schedules_dict = snaptool_config.parse_fs_schedules()
+    # snaptool_config.parse_fs_schedules()
 
     obs_list = snaptool_config.cluster_connection.call_weka_api("obs_s3_list", {})
     for obs in obs_list:

@@ -37,15 +37,17 @@
 
 cluster:
    auth_token_file: auth-token.json
-   hosts: weka01,weka02,weka03
+   hosts: vweka05,vweka02,vweka03
    force_https: True   # only 3.10+ clusters support https
    verify_cert: False  # default cert cannot be verified
 
 filesystems:
-   b01: fridays-4pm, daily-8am, wkdays-hourly-9-5, every15m-Mon-Fri, every5m, sat-sun-noon
-   bs02: fridays-4pm, wkdays-hourly-9-5, every5m, sat-sun-noon
-   bsn03: default, daily-8am, every3m, every5mU, sat-sun-noon, sat-sun-interval
-   bsna04: default, every15m-Mon-Fri, sat-sun-noon, sat-sun-interval
+#   b01: fridays-4pm, daily-8am, wkdays-hourly-9-5, every15m-Mon-Fri, every5m, sat-sun-noon
+#   bs02: fridays-4pm, wkdays-hourly-9-5, every5m, sat-sun-noon
+#   bsn03: default, daily-8am, every3m, every5mU, sat-sun-noon, sat-sun-interval
+   bs02: testremote
+   bsn03: testlocal, testremote, missing
+#   bsna04: default, every15m-Mon-Fri, sat-sun-noon, sat-sun-interval
 
 schedules:
    default:
@@ -62,12 +64,22 @@ schedules:
          every: Mon,Tue,Wed,Thu,Fri,Sat
          retain: 14
          # at: 0000 (this is default)
-      hourly:
+      hourly-make-it-too-too-long:
          every: Mon,Tue,Wed,Thu,Fri
          retain: 8
          interval: 60
          at: 9:00am
          until: 5pm
+   testlocal:
+      every: day
+      interval: 5
+      retain: 4
+      upload: true
+   testremote:
+      every: day
+      interval: 6
+      retain: 4
+      upload: remote
    every5m:
       every: day
       interval: 5

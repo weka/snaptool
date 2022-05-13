@@ -9,18 +9,34 @@
 # system imports
 import os
 import queue
+from collections import deque
 import threading
 import time
 import uuid
 import logging
 import string
+import datetime
 
 logdir = "logs"
 log = logging.getLogger(__name__)
 actions_log = logging.getLogger("snapshot_actions_log")
 intent_log_filename = "snap_intent_q.log"
 intent_log = 'Global uninitialized'
-background_q = queue.Queue()
+
+
+class UploadDownloadQueue(queue.Queue):
+    def __init__(self):
+        self.progress_messages = deque(maxlen=500)
+        self.progress_messages.append("Initializing/waiting...")
+        queue.Queue.__init__(self)
+
+    def message(self, messagestr):
+        t = f"{datetime.datetime.now()}"[:19]
+        m = f"{t} {messagestr}"
+        self.progress_messages.append(m)
+
+# background_q = queue.Queue()
+background_q = UploadDownloadQueue()
 
 def create_log_dir_file(filename):
     prevmask = os.umask(0)
@@ -254,6 +270,7 @@ def background_processor():
         op = q_upload_obj.operation
         uuid = q_upload_obj.uuid
         locator = None
+        bq = background_q
 
         try:
             snap_stat = snapshot_status(q_upload_obj)
@@ -273,12 +290,11 @@ def background_processor():
         if stowStatus == "NONE":
             # Hasn't been uploaded yet; Try to upload the snap via API
             try:
-                log.info(f"Calling snapshot upload with obs_site: {op}")
-                log.info(f"     upload operation spec: {op}")
                 if op == "upload-remote":
                     obs_site = 'REMOTE'
                 else:
                     obs_site = 'LOCAL'
+                log.info(f"Calling snapshot {op} for {fsname}/{snapname} obs_site: {obs_site}")
                 snaps = q_upload_obj.cluster.call_api(method="snapshot_upload",
                                                   parms={'file_system': fsname, 
                                                          'snapshot': snapname,
@@ -330,11 +346,14 @@ def background_processor():
                     progress = int(stowProgress[:-1])   # progress is something like "33%"
                     # reduce log spam - seems to hang under 50% for a while
                     sleeptime = sleep_time(loopcount, progress)
-                    log.info(
-                        f"upload of {fsname}/{snapname} in progress: {stowProgress} complete")
+                    message = f"upload of {fsname}/{snapname} in progress: {stowProgress} complete"
+                    bq.message(message)
+                    log.info(message)
                     continue
                 elif stowStatus == "SYNCHRONIZED":
-                    log.info(f"upload of {fsname}/{snapname} complete.")
+                    message = f"upload of {fsname}/{snapname} complete."
+                    bq.message(message)
+                    log.info(message)
                     intent_log.put_record(uuid, fsname, snapname, op, "complete")
                     actions_log.info(f"{op} complete: {fsname} - {snapname} locator: '{locator}'")
                     return
@@ -343,18 +362,25 @@ def background_processor():
                     time.sleep(5)
                     continue
                 else:
-                    log.error(
-                        f"upload status of {fsname}/{snapname} is {stowStatus}/{stowProgress}?")
+                    message = f"upload status of {fsname}/{snapname} is {stowStatus}/{stowProgress}?"
+                    bq.message(message)
+                    log.error(message)
                     return  # prevent infinite loop
             else:
-                log.error(f"no snap status for {fsname}/{snapname}?")
+                message = f"no snap status for {fsname}/{snapname}?"
+                bq.message(message)
+                log.error(message)
                 return
 
     def delete_snap(q_del_object):
         fsname = q_del_object.fsname
         snapname = q_del_object.snapname
         uuid = q_del_object.uuid
-        log.info(f"Deleting snap {fsname}/{snapname}")
+        message = f"Deleting snap {fsname}/{snapname}"
+        log.info(message)
+        bq = background_q
+        bq.message(message)
+
         # maybe do a snap_status() so we know if it has an object locator and can reference the locator later?
         try:
             status = snapshot_status(q_del_object)
@@ -366,7 +392,9 @@ def background_processor():
         if status is None:
             # already gone? make sure it shows that way in the logs
             intent_log.put_record(uuid, fsname, snapname, "delete", "complete")
-            log.info(f"Snap {fsname}/{snapname} was deleted already; marked complete in intent log")
+            message = f"Snap {fsname}/{snapname} was deleted already; marked complete in intent log"
+            bq.message(message)
+            log.info(message)
             return
         else:
             locator = status['locator']
@@ -385,8 +413,10 @@ def background_processor():
             log.error(f"Error deleting snap {fsname}/{snapname} : {exc} - skipping for now")
             return
 
+        message = f"delete started: {fsname} - {snapname} locator: '{locator}'"
+        bq.message(message)
         intent_log.put_record(uuid, fsname, snapname, "delete", "in-progress")
-        actions_log.info(f"delete started: {fsname} - {snapname} locator: '{locator}'")
+        actions_log.info(message)
 
         # delete may take some time, particularly if uploaded to obj and it's big
         time.sleep(1)  # give just a little time, just in case it's instant
@@ -404,7 +434,9 @@ def background_processor():
             # when the snap no longer exists, we get a None from snap_status()
             if this_snap is None:
                 intent_log.put_record(uuid, fsname, snapname, "delete", "complete")
-                log.info(f"     Snap {fsname}/{snapname} successfully deleted")
+                message = f"     Snap {fsname}/{snapname} successfully deleted"
+                bq.message(message)
+                log.info(message)
                 actions_log.info(f"delete complete: {fsname} - {snapname} locator: '{locator}'")
                 return
             # track how many times we're checking the status
@@ -416,7 +448,9 @@ def background_processor():
                 progress = int(this_snap['objectProgress'][:-1])  # progress is something like "33%", remove last char
             else:
                 progress = 0
-            log.info(f"   Delete of {fsname}/{snapname} progress: {this_snap['objectProgress']}")
+            message = f"   Delete of {fsname}/{snapname} progress: {this_snap['objectProgress']}"
+            bq.message(message)
+            log.info(message)
 
             # reduce log spam - seems to hang under 50% for a while (only if it was uploaded)
             sleeptime = sleep_time(loopcount, progress)
@@ -475,6 +509,7 @@ def init_background_q():
         background_q_thread.daemon = True
         background_q_thread.start()
         log.info(f"background_thread = {background_q_thread}")
+        background_q.message("Upload/download queue process started...")
     return intent_log
 
 
