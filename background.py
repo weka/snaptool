@@ -294,7 +294,7 @@ def background_processor():
                     obs_site = 'REMOTE'
                 else:
                     obs_site = 'LOCAL'
-                log.info(f"Calling snapshot {op} for {fsname}/{snapname} obs_site: {obs_site}")
+                log.info(f"{op} snapshot {fsname}/{snapname} obs_site: {obs_site}")
                 snaps = q_upload_obj.cluster.call_api(method="snapshot_upload",
                                                   parms={'file_system': fsname, 
                                                          'snapshot': snapname,
@@ -354,6 +354,11 @@ def background_processor():
                     message = f"upload of {fsname}/{snapname} complete."
                     bq.message(message)
                     log.info(message)
+                    log.info(
+                        f"upload of {fsname}/{snapname} in progress: {stowProgress} complete")
+                    continue
+                elif stowStatus == "SYNCHRONIZED":
+                    log.info(f"upload of {fsname}/{snapname} complete.")
                     intent_log.put_record(uuid, fsname, snapname, op, "complete")
                     actions_log.info(f"{op} complete: {fsname} - {snapname} locator: '{locator}'")
                     return
@@ -370,8 +375,8 @@ def background_processor():
                 message = f"no snap status for {fsname}/{snapname}?"
                 bq.message(message)
                 log.error(message)
-                return
-
+                return  
+ 
     def delete_snap(q_del_object):
         fsname = q_del_object.fsname
         snapname = q_del_object.snapname
@@ -380,7 +385,6 @@ def background_processor():
         log.info(message)
         bq = background_q
         bq.message(message)
-
         # maybe do a snap_status() so we know if it has an object locator and can reference the locator later?
         try:
             status = snapshot_status(q_del_object)
