@@ -7,10 +7,20 @@
 
 <section class="content">
   <header>
+    
+    <nav>
+    <a href="{{ url_for('snaptool_main_menu') }}">
+        <img src="{{ url_for('static', filename='new-logo-white.png') }}" alt="weka logo">
+    </a>
+    <a class="hover" href="{{ url_for('snaptool_main_menu') }}">Home</a>
+    <a class="hover" href="{{ url_for('snaptool_config_summary') }}">Progress Log</a>
+    <a class="hover" href="{{ url_for('show_config_file') }}">Config File</a>
+    <a class="hover" href="{{ url_for('show_actions_log') }}">Activity Log</a>
+    <div class="animation"></div>
+  </nav>
     {% block header %}{% endblock %}
   </header>
-  {% for message in get_flashed_messages() %}
-    <div class="flash">{{ message }}</div>
-  {% endfor %}
   {% block content %}{% endblock %}
+
+
 </section>

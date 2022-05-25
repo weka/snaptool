@@ -69,14 +69,19 @@ class IntentLog(object):
                 os.rename(self.filename, self.filename + '.1')
 
     # append a record
-    def put_record(self, uuid_s, fsname, snapname, snap_op, status):
+    def put_record(self, uuid_s, fsname, snapname, snap_op, status, dt='now', loc='', bucket=''):
+        if dt == 'now':
+            dt = datetime.datetime.now().strftime("%Y%m%d.%H%M%S.%f")
         with self._lock:
             with open(self.filename, "a") as fd:
-                fd.write(f"{uuid_s}:{fsname}:{snapname}:{snap_op}:{status}\n")
+                fd.write(f"{uuid_s}:{fsname}:{snapname}:{snap_op}:{status}:{dt}:{loc}:{bucket}\n")
 
     # replay the log on a cluster
     def replay(self, cluster):
         log.info(f"Replaying background intent log")
+        log.info(f"running undeleted locators processing...")
+        undeleted = self.undeleted_locators()
+        log.info(f"finished undeleted processing; len={len(undeleted)}")
         replay_start = time.time()
         for uuid_str, fsname, snapname, snap_op in self._incomplete_records():
             log.info(f"re-scheduling {fsname}/{snapname} for {snap_op}")
@@ -91,8 +96,20 @@ class IntentLog(object):
                 try:
                     with open(filename, "r") as fd:
                         for record in fd:
+                            record = record.split('\n')[0] # remove newline
                             temp = record.split(':')
-                            yield temp[0], temp[1], temp[2], temp[3], temp[4][:-1]
+                            if len(temp) not in (5, 8):
+                                log.error(f"Invalid record in intent log: {record}")
+                                continue
+                            uid, fs, name, op, status = temp[0:5]
+                            if len(temp) is 5:
+                                dt = name.split(".",-1)[1]
+                                loc, bucket = '', ''
+                            if len(temp) is 8:
+                                dt = temp[5]
+                                loc = temp[6]
+                                bucket = temp[7]
+                            yield temp[0], temp[1], name, temp[3], temp[4], dt, loc, bucket                                 
                 except FileNotFoundError:
                     log.info(f"Log file {filename} not found")
                     continue
@@ -102,7 +119,7 @@ class IntentLog(object):
         snaps = {}
         # distill the records to just ones that need to be re-processed
         log.info("Reading intent log")
-        for uid, fsname, snapname, cluster_op, status in self._records():
+        for uid, fsname, snapname, cluster_op, status, dt, loc, bucket in self._records():
             if uid not in snaps:
                 snapshot = dict()
                 snapshot['fsname'] = fsname
@@ -110,7 +127,8 @@ class IntentLog(object):
                 snapshot['operation'] = cluster_op
                 snapshot['status'] = status
                 snapshot['uid'] = uid
-                snaps[uid] = snapshot
+                if status != "complete":     # first encounter in file is complete - unlikely but with rotations possible
+                    snaps[uid] = snapshot
             else:
                 if status == "complete":
                     log.debug(f"De-queuing snap {uid} {fsname}/{snapname} (complete)")
@@ -120,29 +138,76 @@ class IntentLog(object):
                     snaps[uid]['status'] = status  # update status
 
         # this should be a very short list - far less than 100; likely under 5
-        sorted_snaps = {"queued": {}, "in-progress": {}, "error": {}, "complete": {}}
+        grouped_snaps = {"queued": {}, "in-progress": {}, "error": {}, "complete": {}}
 
-        for uid, snapshot in snaps.items():  # sort so we can see in-progress and error first
+        for uid, snapshot in snaps.items():  # grouped so we can see in-progress and error first
             log.debug(f"uuid={uid}, snapshot={snapshot}")
-            sorted_snaps[snapshot['status']][uid] = snapshot
+            grouped_snaps[snapshot['status']][uid] = snapshot
 
-        for uid, s in sorted_snaps['complete'].items():
-            if s['operation'] == "delete":
-                del snaps[uid]
+        if len(grouped_snaps['complete']) != 0:
+            log.error(f"Error in _incomplete_records - completed item found after grouping: {grouped_snaps['complete']}")
+        
+#        for uid, s in grouped_snaps['complete'].items():
+#           if s['operation'] == "delete":
+#                del snaps[uid]
 
-        log.debug(f"sorted_snaps = {sorted_snaps}")
+        log.debug(f"sorted_snaps = {grouped_snaps}")
         log.debug(
-            f"There are {len(sorted_snaps['error'])} error snaps, {len(sorted_snaps['in-progress'])} in-progress"
-            f" snaps, and {len(sorted_snaps['queued'])} queued snaps in the intent log")
+            f"There are {len(grouped_snaps['error'])} error snaps, {len(grouped_snaps['in-progress'])} in-progress"
+            f" snaps, and {len(grouped_snaps['queued'])} queued snaps in the intent log")
 
         log.info(f"intent-log incomplete records len: {len(snaps)}; snaps = {snaps}")
 
         # process in order of status # not sure about error ones... do we re-queue?  Should only be 1 in-progress too
         for status in ["in-progress", "error", "queued"]:
-            for uid, snapshot in sorted_snaps[status].items():
-                # these should be re-queued because they didn't finish
+            for uid, snapshot in grouped_snaps[status].items():
+                # these should be re-queued because they didn't finish or got error
                 log.debug(f"re-queueing snapshot = {snapshot}, status={status}")
                 yield uid, snapshot['fsname'], snapshot['snapname'], snapshot['operation']
+
+    def undeleted_locators(self):
+        snaps = {}
+        # distill the records to just ones that have non-deleted locators
+        log.info("Reading intent log")
+        processed, deletes, localsnaps, remotes = 0, 0, 0, 0
+        for uid, fsname, snapname, op, status, dt, loc, bucket in self._records():
+            processed += 1
+            if op == 'upload-remote':
+                remotes += 1
+            if op == 'upload':
+                localsnaps += 1
+            if op == 'delete':
+                deletes += 1
+            key = f"{fsname}-{snapname}"
+            if key not in snaps:
+                snap = dict()
+                snap['fsname'] = fsname
+                snap['snapname'] = snapname
+                snap['op'] = op
+                snap['status'] = status
+                snap['uid'] = uid
+                snap['dt'] = dt
+                snap['loc'] = loc
+                snap['bucket'] = bucket
+                if op == 'upload-remote': 
+                    snap['bucket-type'] = 'remote'
+                else:
+                    snap['bucket-type'] = 'local'
+                snaps[key] = snap
+            else:
+                snap = snaps[key]
+                if loc != '':
+                    snap['loc'] = loc
+                if bucket != '':
+                    snap['bucket'] = bucket
+                snap['op'] = op
+                snap['status'] = status
+            if op is 'delete' and status is 'complete' and snap['bucket-type'] == 'local':
+                del snaps[key]
+        log.info(f"*********\n********")
+        log.info(f"undeleted - processed {processed}, remaining: {len(snaps)}")
+        log.info(f"remotes: {remotes} locals {localsnaps} deletes {deletes}")
+        return snaps
 
 
 base_62_digits = string.digits + string.ascii_uppercase + string.ascii_lowercase
@@ -165,7 +230,7 @@ def get_short_unique_id():     # returns a uuid4 that has been converted to base
     return result
 
 class QueueOperation(object):
-    def __init__(self, cluster, fsname, snapname, op, uuid_str=None):
+    def __init__(self, cluster, fsname, snapname, op, loc='', bucket='', uuid_str=None, dt='now'):
         global background_q
         global intent_log
 
@@ -173,6 +238,11 @@ class QueueOperation(object):
         self.snapname = snapname
         self.operation = op
         self.cluster = cluster
+        self.loc = loc
+        self.bucket = bucket
+        if dt == 'now':
+            dt = datetime.datetime.now().strftime("%Y%m%d.%H%M%S.%f")
+        self.dt = dt
 
         if uuid_str is None:
             uuid_str = get_short_unique_id()
@@ -187,6 +257,9 @@ class QueueOperation(object):
         if fsname != "WEKA_TERMINATE_THREAD" and snapname != "WEKA_TERMINATE_THREAD":
             intent_log.put_record(self.uuid, fsname, snapname, op, "queued")
         background_q.put(self)
+
+    def get_html(self):
+        return f"{self.operation} {self.fsname}/{self.snapname}"
 
 # process operations in the background - runs in a thread - starts before replaying log
 def background_processor():
@@ -263,6 +336,12 @@ def background_processor():
             stowStatus = remotestatus['stowStatus']
         return stowProgress, stowStatus
 
+    def mark_complete(fsname, snapname, op, uuid, locator, bucket):
+        pass
+
+    def mark_deleted(fsname, snapname, op, uuid, locator, bucket):
+        pass
+
     def upload_snap(q_upload_obj):
         # get the current snap status to make sure it looks valid
         fsname = q_upload_obj.fsname
@@ -274,14 +353,14 @@ def background_processor():
 
         try:
             snap_stat = snapshot_status(q_upload_obj)
-            log.debug(f"snap_stat: {snap_stat}")
+            log.info(f"snap_stat: {snap_stat}")
             # 'creationTime': '2021-05-14T15:15:00Z' - use to determine how long it takes to upload?
         except Exception as exc:
             log.error(f"unable to get snapshot status in upload {fsname}/{snapname}: {exc}")
             return
 
         if snap_stat is None:
-            log.error(f"{fsname}/{snapname} doesn't exist.  Not created?  Logging as complete...")
+            log.error(f"{fsname}/{snapname} doesn't exist.  Not created or already deleted?  Logging as complete...")
             intent_log.put_record(uuid, fsname, snapname, op, "complete")
             return
 
@@ -292,14 +371,29 @@ def background_processor():
             try:
                 if op == "upload-remote":
                     obs_site = 'REMOTE'
+                    obs_mode = 'REMOTE'
                 else:
                     obs_site = 'LOCAL'
+                    obs_mode = 'WRITABLE'
                 log.info(f"{op} snapshot {fsname}/{snapname} obs_site: {obs_site}")
                 snaps = q_upload_obj.cluster.call_api(method="snapshot_upload",
                                                   parms={'file_system': fsname, 
                                                          'snapshot': snapname,
                                                          'obs_site': obs_site})
+                log.info(f"snaps from upload call: {snaps}")
                 locator = snaps['locator']
+                fsdict = q_upload_obj.cluster.call_api(method="filesystems_list", parms={})
+                fsinfo = None
+                for fs in fsdict:
+                    if fs['name'] == fsname:
+                        fsinfo = fs
+                        break
+                buckets = fsinfo['obs_buckets']
+                bucketname = ''
+                for b in buckets:
+                    if b['mode'] == obs_mode:
+                        bucketname = b['name']
+                log.info(f"{op} snapshot {fsname}/{snapname} obs_site: {obs_site} loc: '{locator}' bucketname: '{bucketname}'")
             except Exception as exc:
                 log.error(f"error uploading snapshot {fsname}/{snapname}: {exc}")
                 intent_log.put_record(uuid, fsname, snapname, op, "error")
@@ -311,8 +405,8 @@ def background_processor():
             # log.debug(f"snapshots = {snapshots}") # ***vince - check the return to make sure it's been told to upload
 
             log.info(f"Storing intent for snapshot {op} for {fsname}/{snapname}")
-            intent_log.put_record(uuid, fsname, snapname, op, "in-progress")
-            message = f"{op} initiated: {fsname} - {snapname} locator: '{locator}'"
+            intent_log.put_record(uuid, fsname, snapname, op, "in-progress", loc=locator, bucket=bucketname)
+            message = f"{op} initiated: {fsname} - {snapname} locator: '{locator}' bucket: '{bucketname}'"
             bq.message(message)
             actions_log.info(message)
 
@@ -353,16 +447,11 @@ def background_processor():
                     log.info(message)
                     continue
                 elif stowStatus == "SYNCHRONIZED":
-                    message = f"upload of {fsname}/{snapname} complete."
+                    message = f"upload of {fsname}/{snapname} in progress: {stowProgress} complete, locator {locator}"
                     bq.message(message)
-                    log.info(message)
-                    log.info(
-                        f"upload of {fsname}/{snapname} in progress: {stowProgress} complete")
-                    continue
-                elif stowStatus == "SYNCHRONIZED":
-                    log.info(f"upload of {fsname}/{snapname} complete.")
-                    intent_log.put_record(uuid, fsname, snapname, op, "complete")
+                    intent_log.put_record(uuid, fsname, snapname, op, "complete", loc=locator)
                     actions_log.info(f"{op} complete: {fsname} - {snapname} locator: '{locator}'")
+                    log.info(message)
                     return
                 elif stowStatus == "NONE" and stowProgress == 'N/A' and op == "upload-remote":
                     log.info(f"{op} of {fsname}/{snapname} not started, waiting...")
@@ -413,15 +502,15 @@ def background_processor():
             # ask cluster to delete the snap
             result = q_del_object.cluster.call_api(method="snapshot_delete",
                                                parms={"file_system": fsname, "name": snapname})
-            log.debug(f"Delete result: {result}")
-            log.debug(f"Snap {fsname}/{snapname} delete initiated")
+            log.info(f"Delete result: {result}")
+            log.info(f"Snap {fsname}/{snapname} delete initiated")
         except Exception as exc:
             log.error(f"Error deleting snap {fsname}/{snapname} : {exc} - skipping for now")
             return
 
         message = f"delete started: {fsname} - {snapname} locator: '{locator}'"
         bq.message(message)
-        intent_log.put_record(uuid, fsname, snapname, "delete", "in-progress")
+        intent_log.put_record(uuid, fsname, snapname, "delete", "in-progress", loc=locator)
         actions_log.info(message)
 
         # delete may take some time, particularly if uploaded to obj and it's big
@@ -439,7 +528,7 @@ def background_processor():
 
             # when the snap no longer exists, we get a None from snap_status()
             if this_snap is None:
-                intent_log.put_record(uuid, fsname, snapname, "delete", "complete")
+                intent_log.put_record(uuid, fsname, snapname, "delete", "complete", loc=locator)
                 message = f"     Snap {fsname}/{snapname} successfully deleted"
                 bq.message(message)
                 log.info(message)

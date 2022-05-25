@@ -4,11 +4,12 @@
 {% endblock %}
 
 {% block header %}
-  <h1>{% block title %}Snaptool Activity Log{% endblock %}</h1>
+  <h1>{% block title %}Snaptool Error{% endblock %}</h1>
 {% endblock %}
 
 {% block content %}
+<p>Error:</p>
 <pre>
-{{ logtext }}
+{{ message }}
 </pre>
 {% endblock %}

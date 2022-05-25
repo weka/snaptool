@@ -177,7 +177,7 @@ def parse_schedule_entry(schedule_groupname, schedule_name, sched_spec):
         log.error(f"While parsing config file: for {name} (len={len(name)}):")
         log.error(f"   Length of schedule group name + name must be less than 18 characters")
         log.error(f"   Ignoring entry.")
-        return None, f"Schedule {name}: name too long"
+        return None, f"Schedule '{name}': name is too long"
     every_type, every, retain, at, interval, until, upload, day = \
         _parse_schedule_spec(sched_spec, name)
     if every_type == 'month':
@@ -195,7 +195,7 @@ def parse_schedule_entry(schedule_groupname, schedule_name, sched_spec):
 
 class _BaseScheduleEntry(object):
     def __str__(self):
-        time = self._get_at_time_str()
+        time = self.at.strftime("%H:%M")
         return f"{self.name}:at={time}:retain={self.retain}:upload={self.upload}"
 
     def __init__(self, name, retain, at, upload=False, sort_priority=9999):
@@ -208,13 +208,14 @@ class _BaseScheduleEntry(object):
         self.no_upload = not upload    # for secondary sorting
         self.sort_priority = sort_priority      # for 3rd level sort
         log.debug(f'Init Schedule Entry: {str(self)}')
-
-    def _get_at_time_str(self):
         return str(self.at.hour).zfill(2) + str(self.at.minute).zfill(2)
 
     def get_html(self):
-        html = f"{self.name}: Snap at {self._get_at_time_str()}, retain {self.retain}, upload: {self.upload}"
+        html = ""
         return html
+
+    def get_html_type(self):
+        return "Base"
 
     def calc_next_snaptime(self, now):
         # should never be called
@@ -232,9 +233,12 @@ class MonthlyScheduleEntry(_BaseScheduleEntry):
     def get_html(self):
         html = super().get_html()
         months = [months_abbr_names[m-1] for m in self.month_list]
-        html += f", months: {months}, day: {self.day}"
+        html += f"at {self.at.strftime('%H:%M')} on day {self.day} of {', '.join(months)}"
         return html
         
+    def get_html_type(self):
+        return "Monthly"
+
     def calc_next_snaptime(self, now):
         log.debug(f" (monthly) now={now}, self.nextsnap_dt={self.nextsnap_dt}")
         if self.retain == 0:    # force sort to the end of time
@@ -271,8 +275,11 @@ class DailyScheduleEntry(_BaseScheduleEntry):
     def get_html(self):
         html = super().get_html()
         days = [days_abbr_names[m] for m in self.weekday_list]
-        html += f", weekdays: {days}"
+        html += f"at {self.at.strftime('%H:%M')} on {', '.join(days)}"
         return html
+
+    def get_html_type(self):
+        return "Daily"
         
     def find_next_daily_snaptime(self, now, hour, minute):
         target_datetime = datetime(now.year, now.month, now.day, hour, minute)
@@ -299,7 +306,7 @@ class DailyScheduleEntry(_BaseScheduleEntry):
 
 class IntervalScheduleEntry(DailyScheduleEntry):
     def __str__(self):
-        time = self._get_until_time_str()
+        time = self.until.strftime('%H:%M')
         return "Interval-" + DailyScheduleEntry.__str__(self) + f":interval={self.interval}:until={time}"
 
     def __init__(self, name, weekday_list, retain, at, until, interval, upload):
@@ -308,14 +315,14 @@ class IntervalScheduleEntry(DailyScheduleEntry):
         sort_priority = 1440 + 100 - interval   # Daily always wins for intervals < 1 day
         DailyScheduleEntry.__init__(self, name, weekday_list, retain, at, upload, sort_priority)
 
-    def _get_until_time_str(self):
-        return str(self.until.hour).zfill(2) + str(self.until.minute).zfill(2)
-
     def get_html(self):
         html = super().get_html()
-        html += f", interval: {self.interval}, until: {self._get_until_time_str()}"
+        html = html.replace(" on", f", then every {self.interval} minutes until {self.until.strftime('%H:%M')} on")
         return html
 
+    def get_html_type(self):
+        return "Interval"
+        
     def calc_next_snaptime(self, now):
         # get rid of seconds
         now = now.replace(second=0, microsecond=0)
