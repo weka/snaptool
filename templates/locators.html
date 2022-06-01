@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+
+{% block header %}
+  <h1>Snaptool Locators</h1>
+{% endblock %}
+
+{% block content %}
+<h4>Snaptool available locators:</h4>
+
+<div class="locdiv">
+  <table class="loctable">  
+    <thead>
+      <tr>
+        <th class="loctableth">Filesystem</th>
+        <th class="loctableth">Snapname</th>
+        <th class="loctableth">Type</th>
+        <th class="loctableth">Locator</th>
+        <th class="loctableth">Bucket Name</th>
+      </tr>
+    </thead>
+  {% for t in locators %}
+    {% for row in t %}
+      <tr>
+        <td>{{row['fs']}}</td>
+        <td>{{row['snapname']}}</td>
+        <td>{{row['op']}}</td>
+        <td>{{row['loc']}}</td>
+        <td>{{row['bucketname']}}</td>
+      </tr>
+    {% endfor %}
+    <tr>
+      <td colspan="5">&nbsp;</td>
+    </tr>
+  {% endfor %}
+</table>
+</div>
+<br>
+<br>
+<h4>Types:</h4>
+<ul>
+<li>'upload' - snapshot exists, uploaded to local object store</li>
+<li>'upload-remote' - snapshot exists, uploaded to remote object store</li>
+<li>'upload-remote-delete' - snapshot no longer exists, locator should still exist in remote object store</li>
+</ul>
+
+<br>
+
+{% endblock %}

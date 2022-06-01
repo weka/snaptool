@@ -1,12 +1,14 @@
 from flask import Flask, render_template
+from flask import request, jsonify
 from flask.logging import default_handler
-from flask import request
 import threading
 import time
 import logging
 import background
 import traceback
 import os
+import requests
+
 
 app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -37,15 +39,15 @@ def str_schedule_group(group):
 
 def get_progress_list():
     try:
-        if background.background_q:
-            if background.background_q.progress_messages:
-                messagelist = list(background.background_q.progress_messages)
-                progress = "\n".join(messagelist)
-                progress = f"{progress}"
-                return progress
+        if background.background_q and background.background_q.progress_messages is not None:
+            messagelist = list(background.background_q.progress_messages)
+            progress = "\n".join(messagelist)
+            progress = f"{progress}"
+            return progress
+        return ["error getting progress list"]
     except Exception as exc:
         app.logger.warning(f"error getting progress list: {exc}")
-        return "error getting progress list"
+        return ["error getting progress list"]
     
 @app.route("/alog")
 def show_actions_log():
@@ -56,6 +58,15 @@ def show_actions_log():
             entries = logblob.splitlines(True)
             revlog = "".join(reversed(entries))
             return render_template('actions_log.html', logtext=revlog)
+    except Exception as exc:
+        html = traceback.format_exc()
+        return render_template("error.html", message=f"error: <br><br>{html}")
+
+@app.route("/locs")
+def show_locators():
+    try:
+        locators = background.intent_log.get_records_pd()
+        return render_template('locators.html', locators=locators)
     except Exception as exc:
         html = traceback.format_exc()
         return render_template("error.html", message=f"error: <br><br>{html}")
@@ -74,11 +85,11 @@ def show_config_file():
         html = traceback.format_exc()
         return render_template("error.html", message=f"error: {html}")
 
-@app.route("/config")
-def snaptool_config_summary():
+@app.route("/progress")
+def snaptool_progress():
     try:
         progress = get_progress_list()
-        return render_template("snap-config.html", configobj=sconfig, progress=progress)
+        return render_template("progress.html", configobj=sconfig, progress=progress)
     except Exception as exc:
         html = traceback.format_exc()
         return render_template("error.html", message=f"error: <br><br>{html}")
@@ -108,11 +119,28 @@ def snaptool_main_menu():
         html = f"{traceback.format_exc()}"
         return render_template("error.html", f"error: {html}")
 
+@app.get("/shutdownthread")
+def shutdown_thread():
+    shutdown_func = request.environ.get('werkzeug.server.shutdown')
+    shutdown_func()
+    return "Shutting down..."
+
+def stop_ui():
+    app.logger.warning(f"Shutting down flask...")
+    global sconfig
+    try:
+        if sconfig:
+            url = f'http://127.0.0.1:{sconfig.flask_http_port}/shutdownthread'
+            print(f"in stop_ui, url: {url}")
+            resp = requests.get(url)
+    except Exception as exc:
+        app.logger.error(f"While shutting down {exc}")
+    app.logger.warning(f"resp = {resp}")
+
 def run_ui(snaptool_config=None):
-    # app.run(debug=True)
     global sconfig
     sconfig = snaptool_config
-    kwargs = {'host': '0.0.0.0', 'port': sconfig.flask_http_port, 'threaded': True, 'use_reloader': False, 'debug': True}
+    kwargs = {'host': '0.0.0.0', 'port': sconfig.flask_http_port, 'threaded': True, 'use_reloader': False, 'debug': False}
     flaskThread = threading.Thread(target=app.run, daemon=True, kwargs=kwargs)
     print("run_ui - Starting status UI\n")
     flaskThread.start()

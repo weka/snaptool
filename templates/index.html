@@ -38,9 +38,12 @@
 <div class="divwrapper roundedborders">
 <div class="divwrapperleft">
   <h2>Upload/Delete queue:</h2>
+  {% if q_size > 0 %}
+  <p>{{q_size}} entries.</p>
+  {% endif %}
 </div>
 <div class="divwrapperright">
-  <table class="errortable">
+  <table class="queue">
     <h2></h2>
     {% if q_size > 0 %} 
         {% for e in q %}

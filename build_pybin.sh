@@ -5,7 +5,7 @@ TOOL=snaptool
 MAIN=snaptool.py
 TARGET=tarball/$TOOL
 
-pyinstaller --onefile $MAIN
+pyinstaller --onefile --add-data "templates:templates" --add-data "static:static" $MAIN
 
 mkdir -p $TARGET
 cp dist/$TOOL $TARGET

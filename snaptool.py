@@ -137,7 +137,7 @@ def setup_logging_initial():
         # create handler to log to syslog
         log.info(f"setting syslog to {syslog_addr} on platform {platform.platform()}")
         syslog_handler = logging.handlers.SysLogHandler(syslog_addr)
-        if syslog_handler is not None:
+        if syslog_handler != None:
             syslog_handler.setFormatter(logging.Formatter(syslog_format))
             log.addHandler(syslog_handler)
             log.removeHandler(logging.lastResort)
@@ -206,6 +206,10 @@ def _parse_check_top_level(args, config):
     else:
         msg += f"'schedules' not found. "
         s_found = False
+    if 'snaptool' in config:
+        msg += f"'snaptool' section found."
+    else:
+        msg += f"'snaptool' section not found."
     log.info(f"Config parse: {msg}")
     if s_found and fs_found and c_found:
         log.info(f"Config top level check ok. {msg}")
@@ -228,13 +232,15 @@ class ClusterConnection(object):
         try:
             log.info("Attempting cluster connection...")
             self.weka_cluster = wekacluster.WekaCluster(self.clusterspec, self.authfile,
-                                                        force_https=self.force_https, verify_cert=self.verify_cert)
+                                                        force_https=self.force_https, 
+                                                        verify_cert=self.verify_cert)
             self.authfile = self.weka_cluster.authfile
             self.weka_cluster_name = self.weka_cluster.name
             self.connected_since = now()
             connected = self.weka_cluster
         except Exception as exc:
-            msg = f"Failed to connect to cluster hosts: {self.clusterspec} with authfile: {self.authfile}.  {exc}"
+            msg = f"Connection to cluster hosts '{self.clusterspec}'"
+            msg += f" failed with authfile '{self.authfile}' - {exc}"
             log.error(msg)
         return connected, msg
 
@@ -249,13 +255,14 @@ class ClusterConnection(object):
         else:
             return False
 
-    def call_weka_api(self, method, parms):
+    def call_weka_api(self, method, parms, max_tries=20):
         raise_exc, err_type, errmsg = None, None, None
-        max_retries = 20
         sleep_wait = 5
-        for i in range(max_retries):
+        for i in range(max_tries):
             try:
-                result = self.weka_cluster.call_api(method=method, parms=parms)
+                log.debug(f"calling api {method} with {parms}")
+                result = self.weka_cluster.call_api(method, parms)
+                log.debug(f"api call {method} with {parms} returned: {result}")
                 return result
             except wekalib.exceptions.APIError as exc:
                 raise_exc = exc
@@ -266,7 +273,7 @@ class ClusterConnection(object):
                 if method == "snapshot_create":
                     if errmsg.find("already exists") > 0:   # 'name already exists' or 'accessPoint already exists'
                         return None
-                log.warning(f"Will try again after {sleep_wait} seconds (retry {i + 1} of {max_retries})...")
+                log.warning(f"Will try again after {sleep_wait} seconds (retry {i + 1} of {max_tries})...")
                 time.sleep(sleep_wait)
                 if i >= 2:  # first couple times just wait and try again.
                     # After that, reconnect to cluster each failure, increase wait time.
@@ -301,16 +308,16 @@ class ClusterConnection(object):
                 "name": name,
                 "access_point": access_point_name,
                 "is_writable": False})
-            if created_snap is None:
+            if created_snap == None:
                 actions_log.info(f"Snapshot exists: {fs} - {name}")
                 log.info(f"   Snap {fs}/{name} already exists")
             else:
-                actions_log.info(f"Created {fs} - {name}")
+                actions_log.info(f"Created snap {fs} - {name}")
                 log.info(f"   Snap {fs}/{name} created")
             upload_op = False
-            if upload is True or upload is 'LOCAL':
+            if upload == True or upload.upper() == 'LOCAL':
                 upload_op = "upload"
-            elif upload is 'REMOTE':
+            elif upload.upper() == 'REMOTE':
                 upload_op = "upload-remote"
             if upload_op:
                 background.QueueOperation(self.weka_cluster, fs, name, upload_op)
@@ -329,9 +336,7 @@ class ClusterConnection(object):
         for sg in sg_list:
             for entry in sg.entries:
                 for fs in sg.filesystems:
-                    # snaps = [s for s in all_snaps if s['name'].split(".")[0] == entry.name and s['filesystem'] == fs]
                     snaps = get_fs_snaps(all_snaps, fs, entry.name)
-                    # snaps.sort(key=itemgetter('creationTime'))
                     if len(snaps) > entry.retain:
                         num_to_delete = len(snaps) - entry.retain
                         snaps_to_delete = snaps[:num_to_delete]
@@ -440,7 +445,7 @@ class SnaptoolConfig(object):
 
     def create_cluster_connection(self):
         # returns a cluster connection object
-        if self.config is None:
+        if self.config == None:
             log.error(f"config empty or None")
             self.config = {}
         cluster_yaml = {}
@@ -471,6 +476,20 @@ class SnaptoolConfig(object):
         result = ClusterConnection(clusterspec, authfile, force_https, verify_cert)
         return result
 
+    def parse_snaptool_settings(self):
+        p = 8090
+        h = '0.0.0.0'
+        if 'snaptool' in self.config:
+            st = self.config['snaptool']
+            if 'port' in st:
+                p = st['port']
+                log.info(f"from config file - snaptool.port = {p}")
+            if 'host' in st:
+                h = st['host']
+                log.info(f"from config file - snaptool.host = {h}")
+        self.flask_http_port = int(p)
+        return p, h
+
     def parse_fs_schedules(self):
         resultsdict = {}
         _parse_check_top_level(self.args, self.config)
@@ -484,14 +503,14 @@ class SnaptoolConfig(object):
             resultsdict[schedname] = new_group
             if "every" in schedule_spec.keys():  # single schedule item without a sub-schedule name
                 entry, err_reason = snapshots.parse_schedule_entry(None, schedname, schedule_spec)
-                if entry is not None:
+                if entry != None:
                     new_group.entries.append(entry)
                 else:
                     self.ignored_errors.append(err_reason)
             else:
                 for schedentryname, schedentryspec in schedule_spec.items():
                     entry, err_reason = snapshots.parse_schedule_entry(schedname, schedentryname, schedentryspec)
-                    if entry is not None:
+                    if entry != None:
                         new_group.entries.append(entry)
                     else:
                         self.ignored_errors.append(err_reason)
@@ -529,6 +548,19 @@ class SnaptoolConfig(object):
             self.configfile_time = get_file_mtime(self.configfile)
             new_stc = SnaptoolConfig(self.configfile, self.args)
             new_stc.load_config()
+            new_stc.parse_snaptool_settings()
+            if new_stc.flask_http_port != self.flask_http_port:
+                if new_stc.flask_http_port != 0:
+                    log.info(f"(Re)tarting ui from reload...")
+                    stop_ui()
+                    log.info(f"ui stopped for reload...")
+                    self.flask_http_port = new_stc.flask_http_port
+                    log.info(f"(Re)tarting ui from reload on new port {self.flask_http_port}...")
+                    maybe_start_ui(self)
+                else:
+                    log.info(f"Stopping ui from reload...")
+                    stop_ui()
+                    self.flask_http_port = new_stc.flask_http_port
             new_stc.parse_fs_schedules()
             new_connection = new_stc.create_cluster_connection()
             if not self.config:
@@ -553,15 +585,15 @@ class SnaptoolConfig(object):
                     m = f"Connection attempt failed; using stored connection info.  error: {msg}"
                     self.errors.append(m)
                     log.error(f"--------------------    {m}")
-                    return False
+                    return connected, True
             else:
                 log.info(f"--------------------   No cluster connection changes to config file since last good connect.")
                 self.update_schedule_changes(new_stc.schedules_dict,
                     new_stc.schedules_dict_unused, new_stc.schedules_dict_used, 
                     new_stc.ignored_errors, new_stc.errors)
-                return True
+                return True, True
         except Exception as e:
-            m = "Reload error for {self.configfile}; using existing config info. {e}"
+            m = f"Reload error for {self.configfile}; using existing config info. {e}"
             self.errors.append(m)
             log.error(f"--------------------    {m}")
             return False, True
@@ -650,6 +682,15 @@ def get_fs_snaps(all_snaps, fs, schedname):
     snaps_for_fs.sort(key=itemgetter('creationTime'))
     return snaps_for_fs
 
+def maybe_start_ui(snaptool_config):
+    if flask_ui.sconfig == None and snaptool_config.flask_http_port != 0:
+        flask_ui.run_ui(snaptool_config)
+
+def stop_ui():
+    flask_ui.stop_ui()
+    time.sleep(5)
+    flask_ui.sconfig = None
+
 def main():
     connect_succeeded = False
 
@@ -663,22 +704,31 @@ def main():
 
     snaptool_config = SnaptoolConfig(args.configfile, args)
 
-    setup_actions_log()
-    snaptool_config.resolved_actions_log = actions_log_resolved_file
-    if flask_ui.sconfig == None and args.http_port != 0:
+    if not args.test_connection_only:
+        setup_actions_log()
+        snaptool_config.resolved_actions_log = actions_log_resolved_file
+        m = "Initializing background q and replaying operation intent log..."
+        log.info(m)
+        background.background_q.message(m)
+        background.init_background_q()
+
+    if args.http_port != 0:
         snaptool_config.flask_http_port = args.http_port
-        flask_ui.run_ui(snaptool_config)
+    maybe_start_ui(snaptool_config)
+
     while not connect_succeeded:
         connect_succeeded, config_found = snaptool_config.reload(always_reconnect=True)
         log.info(f"Config reload results: {connect_succeeded} {config_found}")
         if args.test_connection_only:
             _exit_with_connection_status(connect_succeeded)
         if not connect_succeeded:
-            if config_found:
+            if config_found and snaptool_config.cluster_connection:
                 cl = snaptool_config.cluster_connection.clusterspec
                 au = snaptool_config.cluster_connection.authfile
                 cerror = f"Connection to {cl} with authfile {au} failed.  " \
                             f"Sleeping, then reloading config and trying again."
+            elif config_found:
+                cerror = f"Config found but no cluster_connection"
             else:
                 cerror = f"Snaptool configuration file {args.configfile} not found"
             background.background_q.message(cerror)
@@ -686,20 +736,11 @@ def main():
             time.sleep(15)
         else:
             background.background_q.message("Connected to cluster")
-
-    m = "Initializing background q and replaying operation intent log..."
-    log.info(m)
-    background.background_q.message(m)
-    background.init_background_q()
+            
     background.intent_log.replay(snaptool_config.cluster_connection.weka_cluster)
 
-    # snaptool_config.parse_fs_schedules()
-    obs_list = []
     try:
-        obs_list = snaptool_config.cluster_connection.call_weka_api("obs_s3_list", {})
         fs_list = snaptool_config.cluster_connection.call_weka_api("filesystems_list", {})
-        for obs in obs_list:
-            log.info(f"Found s3 obs: {obs['obs_site']}, name: {obs['obs_name']}, bucket: {obs['bucket']}")
         for fs in fs_list:
             log.info(f"fs {fs['name']}: obs_buckets: {fs['obs_buckets']}")
     except Exception as exc:

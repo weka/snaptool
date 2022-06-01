@@ -50,9 +50,10 @@ Snaptool can also be run in docker - if that is the desired deployment, see the 
 
 # Configuration
 
-A YAML file provides configuration information. The default configuration file name is snaptool.yml, and a sample snaptool.yml is included.  There are three top-level sections, all of which are required:
+A YAML file provides configuration information. The default configuration file name is snaptool.yml, and a sample snaptool.yml is included.  There are four top-level sections. All are required except 'snaptool':
 
     cluster:  
+    snaptool:
     filesystems: 
     schedules:
 
@@ -63,6 +64,11 @@ Cluster information is in the 'cluster:' section.  The hosts list is required.  
         hosts: 
         force_https: 
         verify_cert: 
+
+The snaptool: section allows a single keyword 'port:' which is the network port that will be used to run the web status UI.   If this is 0, the web status UI will be shut down.  The default is 8090 if not provided (if not provided, this can also be overriden at the command line, but the snaptool.yml setting will supercede the command line argument).
+
+    snaptool:
+        port: 8090
 
 Filesystems are in the 'filesystems' section, and these entries define which snapshot schedule(s) will run for the listed filesystems.  Each filesystem line looks like:
 
@@ -133,6 +139,9 @@ example snaptool.yml:
         hosts: vweka1,vweka2,vweka3
         force_https: True   # only 3.10+ clusters support https
         verify_cert: False  # default cert cannot be verified
+
+    snaptool:
+        port: 8090
 
     filesystems:
         fs01: default

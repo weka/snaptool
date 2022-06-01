@@ -16,6 +16,7 @@ import uuid
 import logging
 import string
 import datetime
+import pandas as pd
 
 logdir = "logs"
 log = logging.getLogger(__name__)
@@ -28,14 +29,15 @@ class UploadDownloadQueue(queue.Queue):
     def __init__(self):
         self.progress_messages = deque(maxlen=500)
         self.progress_messages.append("Initializing/waiting...")
+        self.locators = {}
         queue.Queue.__init__(self)
 
     def message(self, messagestr):
         t = f"{datetime.datetime.now()}"[:19]
         m = f"{t} {messagestr}"
+        log.info(m)
         self.progress_messages.append(m)
 
-# background_q = queue.Queue()
 background_q = UploadDownloadQueue()
 
 def create_log_dir_file(filename):
@@ -80,7 +82,8 @@ class IntentLog(object):
     def replay(self, cluster):
         log.info(f"Replaying background intent log")
         log.info(f"running undeleted locators processing...")
-        undeleted = self.undeleted_locators()
+        self.cleanup_intent_log(cluster)
+        undeleted = self.get_records_pd()
         log.info(f"finished undeleted processing; len={len(undeleted)}")
         replay_start = time.time()
         for uuid_str, fsname, snapname, snap_op in self._incomplete_records():
@@ -102,10 +105,10 @@ class IntentLog(object):
                                 log.error(f"Invalid record in intent log: {record}")
                                 continue
                             uid, fs, name, op, status = temp[0:5]
-                            if len(temp) is 5:
+                            if len(temp) == 5:
                                 dt = name.split(".",-1)[1]
                                 loc, bucket = '', ''
-                            if len(temp) is 8:
+                            if len(temp) == 8:
                                 dt = temp[5]
                                 loc = temp[6]
                                 bucket = temp[7]
@@ -147,16 +150,12 @@ class IntentLog(object):
         if len(grouped_snaps['complete']) != 0:
             log.error(f"Error in _incomplete_records - completed item found after grouping: {grouped_snaps['complete']}")
         
-#        for uid, s in grouped_snaps['complete'].items():
-#           if s['operation'] == "delete":
-#                del snaps[uid]
-
         log.debug(f"sorted_snaps = {grouped_snaps}")
         log.debug(
             f"There are {len(grouped_snaps['error'])} error snaps, {len(grouped_snaps['in-progress'])} in-progress"
             f" snaps, and {len(grouped_snaps['queued'])} queued snaps in the intent log")
 
-        log.info(f"intent-log incomplete records len: {len(snaps)}; snaps = {snaps}")
+        log.info(f"intent-log incomplete records len: {len(snaps)}")
 
         # process in order of status # not sure about error ones... do we re-queue?  Should only be 1 in-progress too
         for status in ["in-progress", "error", "queued"]:
@@ -165,50 +164,49 @@ class IntentLog(object):
                 log.debug(f"re-queueing snapshot = {snapshot}, status={status}")
                 yield uid, snapshot['fsname'], snapshot['snapname'], snapshot['operation']
 
-    def undeleted_locators(self):
-        snaps = {}
-        # distill the records to just ones that have non-deleted locators
-        log.info("Reading intent log")
-        processed, deletes, localsnaps, remotes = 0, 0, 0, 0
-        for uid, fsname, snapname, op, status, dt, loc, bucket in self._records():
-            processed += 1
-            if op == 'upload-remote':
-                remotes += 1
-            if op == 'upload':
-                localsnaps += 1
-            if op == 'delete':
-                deletes += 1
-            key = f"{fsname}-{snapname}"
-            if key not in snaps:
-                snap = dict()
-                snap['fsname'] = fsname
-                snap['snapname'] = snapname
-                snap['op'] = op
-                snap['status'] = status
-                snap['uid'] = uid
-                snap['dt'] = dt
-                snap['loc'] = loc
-                snap['bucket'] = bucket
-                if op == 'upload-remote': 
-                    snap['bucket-type'] = 'remote'
-                else:
-                    snap['bucket-type'] = 'local'
-                snaps[key] = snap
-            else:
-                snap = snaps[key]
-                if loc != '':
-                    snap['loc'] = loc
-                if bucket != '':
-                    snap['bucket'] = bucket
-                snap['op'] = op
-                snap['status'] = status
-            if op is 'delete' and status is 'complete' and snap['bucket-type'] == 'local':
-                del snaps[key]
-        log.info(f"*********\n********")
-        log.info(f"undeleted - processed {processed}, remaining: {len(snaps)}")
-        log.info(f"remotes: {remotes} locals {localsnaps} deletes {deletes}")
-        return snaps
+    def get_records_pd(self):
+        names = ['uid', 'fs', 'snapname', 'op', 'status', 'dt', 'loc', 'bucketname']
+        with self._lock:
+            df = pd.read_csv(self.filename, sep=':', names=names)
+        log.info(df.count())
+        complete = df.loc[df['status'] == 'complete']
+        log.info(f"complete count: {len(complete)}")
+        withloc_complete = complete.dropna()
+        log.info(f"complete notna count: {len(withloc_complete)}")
+        result = withloc_complete.sort_values(by=['fs','snapname','dt'])
+        result = result.drop_duplicates(keep='last', subset=['fs','snapname','op'])
+        groupbycols = ['fs','snapname','loc','bucketname']
+        result = result.groupby(groupbycols, as_index=False).agg({'op': '-'.join})
+        result = result[result.op != 'upload-delete']
+        result_local = result[result.op == 'upload']
+        result_remote = result[result.op == 'upload-remote']
+        result_remote_deleted = result[result.op == 'upload-remote-delete']
+        log.info(f"withloc complete sorted list count: {len(result)}")
 
+        return [result_local.to_dict('records'), 
+                result_remote.to_dict('records'), 
+                result_remote_deleted.to_dict('records')]
+
+    def cleanup_intent_log(self, cluster):
+        # if there are any deleted local snapshots that aren't marked deleted, mark them
+        if cluster:
+            try:
+                all_snaps = cluster.call_api(method="snapshots_list", parms={})
+            except Exception as exc:
+                log.info(f"Error getting snapshots list, skipping intent log cleanup")
+                return
+            if all_snaps and len(all_snaps) > 0:    # only do cleanup if we're sure we have a connection
+                log.info(f"cluster all_snaps: {len(all_snaps)}")
+                local, remote, _ = self.get_records_pd()
+                for l in local + remote:
+                    fs, snap = l['fs'], l['snapname']
+                    for s in all_snaps:
+                        if (s['name'] == l['snapname']) and (s['filesystem'] == l['fs']):
+                            break
+                    else:
+                        lloc, bn= l['loc'], l['bucketname']
+                        log.info(f"Queueing {l['fs']} {l['snapname']} for delete")
+                        QueueOperation(cluster, fs, snap, 'delete', loc=lloc, bucket=bn)
 
 base_62_digits = string.digits + string.ascii_uppercase + string.ascii_lowercase
 
@@ -244,7 +242,7 @@ class QueueOperation(object):
             dt = datetime.datetime.now().strftime("%Y%m%d.%H%M%S.%f")
         self.dt = dt
 
-        if uuid_str is None:
+        if uuid_str == None:
             uuid_str = get_short_unique_id()
         self.uuid = uuid_str
 
@@ -269,12 +267,13 @@ def background_processor():
     def snapshot_status(q_snap_obj):
         fsname = q_snap_obj.fsname
         snapname = q_snap_obj.snapname
+        cluster = q_snap_obj.cluster
         # get snap info via api - assumes snap has been created already
         status = []
         for i in range(3):   # try 3 times on some errors
             try:
-                status = q_snap_obj.cluster.call_api(method="snapshots_list",
-                                                   parms={'file_system': fsname, 'name': snapname})
+                status = cluster.call_api(method="snapshots_list",
+                                            parms={'file_system': fsname, 'name': snapname})
             except Exception as exc:
                 log.error(f"Error getting snapshot status for {fsname}/{snapname}: {exc}")
                 if "(502) Bad Gateway" in str(exc):
@@ -325,22 +324,72 @@ def background_processor():
                 return 5.0    # first 25s
         return 2.0  # default
 
+    def getFileSystems(cluster):
+        try:
+            fsdict = cluster.call_api(method="filesystems_list", parms={})
+            return fsdict
+        except Exception as exc:
+            log.error(f"error getting filesystems: {exc}")
+            return {}
+    
+    def getFilesystemBucketName(cluster, fsname, mode):
+        fsdicts = getFileSystems(cluster)
+        fsinfo = None
+        buckets = []
+        for fs in fsdicts:
+            if fs['name'] == fsname:
+                fsinfo = fs
+                buckets = fsinfo['obs_buckets']
+                break
+        for b in buckets:
+            if b['mode'].lower() == mode.lower():
+                return b['name']
+        return ''
+
     def getStatInfo(snap_stat, op):
         localstatus = snap_stat['localStowInfo']
         remotestatus = snap_stat['remoteStowInfo']
-        if op is "upload":
+        if op == "upload":
             stowProgress = localstatus['stowProgress']
             stowStatus = localstatus['stowStatus']
+            locator = localstatus['locator']
+            obs_site = 'LOCAL'
+            obs_mode = 'WRITABLE'
         else:
             stowProgress = remotestatus['stowProgress']
             stowStatus = remotestatus['stowStatus']
-        return stowProgress, stowStatus
+            locator = remotestatus['locator']
+            obs_site = 'REMOTE'
+            obs_mode = 'REMOTE'
+        return stowProgress, stowStatus, locator, obs_site, obs_mode
 
-    def mark_complete(fsname, snapname, op, uuid, locator, bucket):
-        pass
+    def upload_completed(fsname, snapname, op, uuid, locator='', bucketname='', reason="complete"):
+        intent_log.put_record(uuid, fsname, snapname, op, "complete", loc=locator, bucket=bucketname)
+        message = f"{op} complete: {fsname} - {snapname} locator: '{locator}' bucket: '{bucketname}'"
+        if reason != "complete":
+            message += f" ({reason})"
+        background_q.message(message)
+        actions_log.info(message)
 
-    def mark_deleted(fsname, snapname, op, uuid, locator, bucket):
-        pass
+    def upload_in_progress(fsname, snapname, op, uuid, locator='', bucketname=''):
+        intent_log.put_record(uuid, fsname, snapname, op, "in-progress", loc=locator, bucket=bucketname)
+        message = f"{op} started: {fsname} - {snapname} locator: '{locator}' bucket: '{bucketname}'"
+        background_q.message(message)
+        actions_log.info(message)
+
+    def delete_completed(fsname, snapname, op, uuid, locator='', bucketname='', reason="deleted"):
+        intent_log.put_record(uuid, fsname, snapname, "delete", "complete", loc=locator, bucket=bucketname)
+        message = f"{op} complete: {fsname} - {snapname} locator: '{locator}' bucket: '{bucketname}'"
+        if reason != "deleted":
+            message += f" ({reason})"
+        background_q.message(message)
+        actions_log.info(message)
+
+    def delete_in_progress(fsname, snapname, op, uuid, locator='', bucketname=''):
+        intent_log.put_record(uuid, fsname, snapname, "delete", "complete", loc=locator, bucket=bucketname)
+        message = f"{op} started: {fsname} - {snapname} locator: '{locator}' bucket: '{bucketname}'"
+        background_q.message(message)
+        actions_log.info(message)
 
     def upload_snap(q_upload_obj):
         # get the current snap status to make sure it looks valid
@@ -348,7 +397,8 @@ def background_processor():
         snapname = q_upload_obj.snapname
         op = q_upload_obj.operation
         uuid = q_upload_obj.uuid
-        locator = None
+        cluster = q_upload_obj.cluster
+        locator = ''
         bq = background_q
 
         try:
@@ -359,61 +409,40 @@ def background_processor():
             log.error(f"unable to get snapshot status in upload {fsname}/{snapname}: {exc}")
             return
 
-        if snap_stat is None:
+        if snap_stat == None:
             log.error(f"{fsname}/{snapname} doesn't exist.  Not created or already deleted?  Logging as complete...")
-            intent_log.put_record(uuid, fsname, snapname, op, "complete")
+            upload_completed(fsname, snapname, op, uuid, reason="snapshot_missing")
             return
 
-        stowProgress, stowStatus = getStatInfo(snap_stat, op)
+        stowProgress, stowStatus, locator, obs_site, obs_mode = getStatInfo(snap_stat, op)
 
         if stowStatus == "NONE":
             # Hasn't been uploaded yet; Try to upload the snap via API
             try:
-                if op == "upload-remote":
-                    obs_site = 'REMOTE'
-                    obs_mode = 'REMOTE'
-                else:
-                    obs_site = 'LOCAL'
-                    obs_mode = 'WRITABLE'
                 log.info(f"{op} snapshot {fsname}/{snapname} obs_site: {obs_site}")
-                snaps = q_upload_obj.cluster.call_api(method="snapshot_upload",
-                                                  parms={'file_system': fsname, 
-                                                         'snapshot': snapname,
-                                                         'obs_site': obs_site})
-                log.info(f"snaps from upload call: {snaps}")
+                snaps = cluster.call_api(method="snapshot_upload",
+                                            parms={'file_system': fsname, 
+                                                    'snapshot': snapname,
+                                                    'obs_site': obs_site})
+                log.info(f"api result from upload call: {snaps}")
                 locator = snaps['locator']
-                fsdict = q_upload_obj.cluster.call_api(method="filesystems_list", parms={})
-                fsinfo = None
-                for fs in fsdict:
-                    if fs['name'] == fsname:
-                        fsinfo = fs
-                        break
-                buckets = fsinfo['obs_buckets']
-                bucketname = ''
-                for b in buckets:
-                    if b['mode'] == obs_mode:
-                        bucketname = b['name']
+                bucketname = getFilesystemBucketName(cluster, fsname, obs_mode)
                 log.info(f"{op} snapshot {fsname}/{snapname} obs_site: {obs_site} loc: '{locator}' bucketname: '{bucketname}'")
             except Exception as exc:
                 log.error(f"error uploading snapshot {fsname}/{snapname}: {exc}")
                 intent_log.put_record(uuid, fsname, snapname, op, "error")
                 if "not tiered: cannot upload from it" in str(exc):     # mark complete if it can't upload
-                    intent_log.put_record(uuid, fsname, snapname, op, "complete")
+                    upload_completed(fsname, snapname, op, uuid, reason="filesystem_not_tiered")
                 return  # skip the rest for this one
 
-            # log that it's been told to upload
-            # log.debug(f"snapshots = {snapshots}") # ***vince - check the return to make sure it's been told to upload
-
-            log.info(f"Storing intent for snapshot {op} for {fsname}/{snapname}")
-            intent_log.put_record(uuid, fsname, snapname, op, "in-progress", loc=locator, bucket=bucketname)
-            message = f"{op} initiated: {fsname} - {snapname} locator: '{locator}' bucket: '{bucketname}'"
-            bq.message(message)
-            actions_log.info(message)
+            log.info(f"Mark snapshot {op} as started for {fsname}/{snapname}")
+            upload_in_progress(fsname, snapname, op, uuid, locator=locator, bucketname=bucketname)
 
         elif stowStatus == "SYNCHRONIZED":
             # we should only ever get here when replaying the log and this one was already in progress
             log.error(f"upload of {fsname}/{snapname} was already complete. Logging it as such")
-            intent_log.put_record(uuid, fsname, snapname, op, "complete")
+            bucketname = getFilesystemBucketName(cluster, fsname, obs_mode)
+            upload_completed(fsname, snapname, op, uuid, locator=locator, bucketname=bucketname)
             return
 
         # otherwise, it should be uploading, so we fall through and monitor it
@@ -435,83 +464,85 @@ def background_processor():
                     continue      # otherwise continue loop, try again
             # track how many times we're checking the status
             loopcount += 1
-            if this_snap is not None:
-                stowProgress, stowStatus = getStatInfo(this_snap, op)
+            if this_snap != None:
+                stowProgress, stowStatus, locator, _, _ = getStatInfo(this_snap, op)
 
                 if stowStatus == "UPLOADING":
                     progress = int(stowProgress[:-1])   # progress is something like "33%"
                     # reduce log spam - seems to hang under 50% for a while
                     sleeptime = sleep_time(loopcount, progress)
-                    message = f"upload of {fsname}/{snapname} in progress: {stowProgress} complete"
+                    message = f"{op} of {fsname}/{snapname} in progress: {stowProgress} complete"
                     bq.message(message)
-                    log.info(message)
                     continue
                 elif stowStatus == "SYNCHRONIZED":
-                    message = f"upload of {fsname}/{snapname} in progress: {stowProgress} complete, locator {locator}"
-                    bq.message(message)
-                    intent_log.put_record(uuid, fsname, snapname, op, "complete", loc=locator)
-                    actions_log.info(f"{op} complete: {fsname} - {snapname} locator: '{locator}'")
-                    log.info(message)
+                    upload_completed(fsname, snapname, op, uuid, locator=locator, bucketname=bucketname)
                     return
-                elif stowStatus == "NONE" and stowProgress == 'N/A' and op == "upload-remote":
+                elif stowStatus == "NONE" and stowProgress == 'N/A' and (op == "upload-remote" or op == "upload"):
                     log.info(f"{op} of {fsname}/{snapname} not started, waiting...")
                     time.sleep(5)
                     continue
                 else:
-                    message = f"upload status of {fsname}/{snapname} is {stowStatus}/{stowProgress}?"
+                    message = f"{op} status of {fsname}/{snapname} is {stowStatus}/{stowProgress} - unexpected"
                     bq.message(message)
                     log.error(message)
                     return  # prevent infinite loop
             else:
-                message = f"no snap status for {fsname}/{snapname}?"
+                message = f"{op}: no snap status for {fsname}/{snapname}?"
                 bq.message(message)
-                log.error(message)
                 return  
  
     def delete_snap(q_del_object):
         fsname = q_del_object.fsname
         snapname = q_del_object.snapname
         uuid = q_del_object.uuid
+        cluster = q_del_object.cluster
+        loc = q_del_object.loc
+        bucket = q_del_object.bucket
+        bucketname = ''
         message = f"Deleting snap {fsname}/{snapname}"
-        log.info(message)
         bq = background_q
         bq.message(message)
         # maybe do a snap_status() so we know if it has an object locator and can reference the locator later?
         try:
             status = snapshot_status(q_del_object)
-            log.debug(f"snap_stat: {status}")
+            if status:
+                remote = status['remoteStowInfo']
+                local = status['localStowInfo']
+                log.info(f"snap_stat in delete_snap for {fsname}/{snapname}: site: {remote}/{local}")
         except Exception as exc:
             log.error(f"delete_snap: unable to get snapshot status for {fsname}/{snapname}: {exc}")
             return
 
-        if status is None:
+        if status == None:
             # already gone? make sure it shows that way in the logs
-            intent_log.put_record(uuid, fsname, snapname, "delete", "complete")
-            message = f"Snap {fsname}/{snapname} was deleted already; marked complete in intent log"
-            bq.message(message)
-            log.info(message)
+            delete_completed(fsname, snapname, "delete", 
+                uuid, locator=loc, bucketname=bucket, reason="not_found")
             return
         else:
-            locator = status['locator']
-            if locator is '':
+            # locator = status['locator']
+            locator = ''
+            obs_mode = ''
+            if locator == '':
                 locator = status['remoteStowInfo']['locator']
-            if locator is '':
+                if locator != '':
+                    obs_mode = 'REMOTE'
+            if locator == '':
                 locator = status['localStowInfo']['locator']
-
+                if locator != '':
+                    obs_mode = 'WRITABLE'
+            if obs_mode != '':
+                bucketname = getFilesystemBucketName(cluster, fsname, obs_mode)
         try:
             # ask cluster to delete the snap
-            result = q_del_object.cluster.call_api(method="snapshot_delete",
-                                               parms={"file_system": fsname, "name": snapname})
-            log.info(f"Delete result: {result}")
+            result = cluster.call_api(method="snapshot_delete",
+                                        parms={"file_system": fsname, "name": snapname})
+            log.info(f"Delete result from {fsname}/{snapname}: {result}")
             log.info(f"Snap {fsname}/{snapname} delete initiated")
         except Exception as exc:
             log.error(f"Error deleting snap {fsname}/{snapname} : {exc} - skipping for now")
             return
 
-        message = f"delete started: {fsname} - {snapname} locator: '{locator}'"
-        bq.message(message)
-        intent_log.put_record(uuid, fsname, snapname, "delete", "in-progress", loc=locator)
-        actions_log.info(message)
+        delete_in_progress(fsname, snapname, "delete", uuid, locator=locator, bucketname=bucketname)
 
         # delete may take some time, particularly if uploaded to obj and it's big
         time.sleep(1)  # give just a little time, just in case it's instant
@@ -521,18 +552,14 @@ def background_processor():
             try:
                 this_snap = snapshot_status(q_del_object)
             except Exception as exc:
-                # when the snap no longer exists, we get a None back, so this is an error
+                # when the snap no longer exists, we get a None back, so this == an error
                 # log.debug(f"snap delete raised exception")
                 log.error(f"Error getting snapshot status: {exc}")
                 return
 
             # when the snap no longer exists, we get a None from snap_status()
-            if this_snap is None:
-                intent_log.put_record(uuid, fsname, snapname, "delete", "complete", loc=locator)
-                message = f"     Snap {fsname}/{snapname} successfully deleted"
-                bq.message(message)
-                log.info(message)
-                actions_log.info(f"delete complete: {fsname} - {snapname} locator: '{locator}'")
+            if this_snap == None:
+                delete_completed(fsname, snapname, "delete", uuid, locator=locator, bucketname=bucketname)
                 return
             # track how many times we're checking the status
             loopcount += 1
@@ -545,7 +572,6 @@ def background_processor():
                 progress = 0
             message = f"   Delete of {fsname}/{snapname} progress: {this_snap['objectProgress']}"
             bq.message(message)
-            log.info(message)
 
             # reduce log spam - seems to hang under 50% for a while (only if it was uploaded)
             sleeptime = sleep_time(loopcount, progress)
@@ -595,10 +621,10 @@ def background_processor():
 # module init
 def init_background_q():
     global intent_log
-    # intent log
     if intent_log == 'Global uninitialized':
         intent_log = IntentLog(intent_log_filename)
-
+        # background_q.locators = intent_log.undeleted_locators()
+        background_q.locators = intent_log.get_records_pd()
         # start the upload thread
         background_q_thread = threading.Thread(target=background_processor)
         background_q_thread.daemon = True
