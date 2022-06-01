@@ -1,0 +1,6 @@
+flask
+pandas
+pyinstaller
+pyyaml
+requests
+wekalib
