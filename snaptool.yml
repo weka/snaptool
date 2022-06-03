@@ -42,7 +42,7 @@ cluster:
    verify_cert: False  # default cert cannot be verified
 
 snaptool:
-   port: 8090     # use 0 to disable the statis web ui.  This overrides command line port argument
+   port: 8090     # use 0 to disable the status web ui.  This overrides command line port argument
 
 filesystems:
 #   b01: fridays-4pm, daily-8am, wkdays-hourly-9-5, every15m-Mon-Fri, every5m, sat-sun-noon
@@ -81,7 +81,7 @@ schedules:
       upload: true
    testremote:
       every: day
-      interval: 12
+      interval: 180
       retain: 4
       upload: remote
    every5m:

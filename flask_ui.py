@@ -17,9 +17,6 @@ app.logger.setLevel(logging.WARN)
 wlog = logging.getLogger("werkzeug")
 wlog.propagate = False
 wlog.setLevel(logging.WARN)
-print(f"flask - root logger: {logging.getLogger()}")
-print(f"flask - app logger: {app.logger}")
-print(f"flask - logger: {wlog}")
 
 sconfig = None
 

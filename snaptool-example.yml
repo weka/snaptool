@@ -1,4 +1,8 @@
 #
+#
+#
+# schedule syntax:
+#
 # every: 'month' | 'day' | list of months | list of days
 #     if 'month' or list of months is provided:
 #         snap occurs at at: <time> on day of month specified by day: <day of month 1-31>
@@ -40,6 +44,9 @@ cluster:
    hosts: weka1,weka2,weka3
    force_https: True   # only 3.10+ clusters support https
    verify_cert: False  # default cert cannot be verified
+
+snaptool:
+   port: 8090      # port for the status UI web interface
 
 filesystems:
    fs01: default
