@@ -28,7 +28,10 @@
 # day:
 #    only used for 'month' or list of months, the day number of the month (1-31)
 # upload:
-#    defaults to no/False - yes/True uploads to object store
+#    valid options: yes, no, True, False, remote
+#    defaults to no/False - no object store upload
+#    yes/True uploads to local object store
+#    remote uploads to remote object store  
 #
 # note that if multiple schedules conflict for the same filesystem and scheduled minute,
 # only the schedule with the longest period between snaps will be taken
@@ -37,21 +40,21 @@
 
 cluster:
    auth_token_file: auth-token.json
-   hosts: vweka05,vweka02,vweka03
+   hosts: weka1,weka2,weka3
    force_https: True   # only 3.10+ clusters support https
    verify_cert: False  # default cert cannot be verified
 
 snaptool:
+<<<<<<< HEAD
    port: 8090     # use 0 to disable the status web ui.  This overrides command line port argument
+=======
+   port: 8090         # use 0 to disable the status web ui.  This overrides the command line port argument
+>>>>>>> 28b37ba7212e9d14a7e6a2f00e878cb1834f676d
 
 filesystems:
-#   b01: fridays-4pm, daily-8am, wkdays-hourly-9-5, every15m-Mon-Fri, every5m, sat-sun-noon
-#   bs02: fridays-4pm, wkdays-hourly-9-5, every5m, sat-sun-noon
-#   bsn03: default, daily-8am, every3m, every5mU, sat-sun-noon, sat-sun-interval
-   b01: testlocal
-   bs02: testremote
-   bsn03: testlocal, testremote, missing
-#   bsna04: default, every15m-Mon-Fri, sat-sun-noon, sat-sun-interval
+   fs01: default
+   fs02: workhoursHourlyUp, weekendsNoon
+   fs03: workhoursEvery20, weekendsNoon, fridayUpload
 
 schedules:
    default:
@@ -68,93 +71,32 @@ schedules:
          every: Mon,Tue,Wed,Thu,Fri,Sat
          retain: 14
          # at: 0000 (this is default)
-      hourly-name-is-too-long:
+      hourly:
          every: Mon,Tue,Wed,Thu,Fri
          retain: 8
          interval: 60
          at: 9:00am
          until: 5pm
-   testlocal:
-      every: day
-      interval: 5
-      retain: 4
-      upload: true
-   testremote:
-      every: day
-      interval: 180
-      retain: 4
-      upload: remote
-   every5m:
-      every: day
-      interval: 5
-      retain: 3
-      at: 9am
-      upload: False
-   every5mU:
-      every: day
-      interval: 5
-      retain: 4
-      at: 9am
-      upload: True
-   every3m:
-      every: day
-      interval: 2
-      retain: 2
-      at: 9am
-      upload: False
-   wkdays-hourly-9-5:
+   workhoursHourlyUp:
       every: Mon,Tue,Wed,Thu,Fri
       retain: 7
       at: 0900
       until: 5pm
       interval: 60
       upload: True
-   every3months:
-      every: Jan,Apr,Jul,Oct
-      retain: 3
-      at: 6am
-      day: 31
-   daily-8am:
-      every: day
-      retain: 3 
-      at: 8am
-      upload: yes
-   dailysched:
-      monthly:
-         every: month
-         at: 0100
-         retain: 3
-         day: 25
-      daily:
-         every: day
-         retain: 3
-         at: 9am
-         upload: no
-   every15m-Mon-Fri:
+   workhoursEvery20:
       every: Mon,Tue,Wed,Thu,Fri
-      retain: 3
-      interval: 15
-      at: 0905
-      until: 5pm
-      upload: no
-   wkdays-hrly-upload:
-      every: Mon,Tue,Wed,Thu,Fri
-      retain: 8
-      interval: 60
+      retain: 7
       at: 0900
       until: 5pm
-      upload: yes
-   fridays-4pm:
-      every: Fri
-      retain: 4
-      at: 4pm
-   sat-sun-noon:
+      interval: 20
+   weekendsNoon:
       every: Sat,Sun
       retain: 4
       at: 1200
-   sat-sun-interval:
-      every: Sat,Sun
-      retain: 24
-      at: 6am
-      interval: 120
+   fridayUpload:
+      every: Friday
+      retain: 3
+      at: 7pm
+      upload: True
 

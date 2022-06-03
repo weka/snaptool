@@ -32,7 +32,10 @@
 # day:
 #    only used for 'month' or list of months, the day number of the month (1-31)
 # upload:
-#    defaults to no/False - yes/True uploads to object store
+#    valid options: yes, no, True, False, remote
+#    defaults to no/False - no object store upload
+#    yes/True uploads to local object store
+#    remote uploads to remote object store  
 #
 # note that if multiple schedules conflict for the same filesystem and scheduled minute,
 # only the schedule with the longest period between snaps will be taken
@@ -46,7 +49,7 @@ cluster:
    verify_cert: False  # default cert cannot be verified
 
 snaptool:
-   port: 8090      # port for the status UI web interface
+   port: 8090         # use 0 to disable the status web ui.  This overrides the command line port argument
 
 filesystems:
    fs01: default
