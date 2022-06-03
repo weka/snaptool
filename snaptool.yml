@@ -40,16 +40,12 @@
 
 cluster:
    auth_token_file: auth-token.json
-   hosts: weka1,weka2,weka3
+   hosts: vweka01,vweka02,vweka03
    force_https: True   # only 3.10+ clusters support https
    verify_cert: False  # default cert cannot be verified
 
 snaptool:
-<<<<<<< HEAD
    port: 8090     # use 0 to disable the status web ui.  This overrides command line port argument
-=======
-   port: 8090         # use 0 to disable the status web ui.  This overrides the command line port argument
->>>>>>> 28b37ba7212e9d14a7e6a2f00e878cb1834f676d
 
 filesystems:
    fs01: default
