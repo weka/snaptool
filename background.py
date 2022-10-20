@@ -187,14 +187,19 @@ class IntentLog(object):
                 result_remote.to_dict('records'), 
                 result_remote_deleted.to_dict('records')]
 
+    def get_snapshots(self, cluster):
+        if cluster:
+            try:  # doesn't retry - intended for quick updates when properly connected
+                all_snaps = cluster.call_api(method="snapshots_list", parms={})
+                return all_snaps
+            except Exception as exc:
+                log.info(f"Error getting snapshots list: {exc}")
+                return []
+
     def cleanup_intent_log(self, cluster):
         # if there are any deleted local snapshots that aren't marked deleted, mark them
         if cluster:
-            try:
-                all_snaps = cluster.call_api(method="snapshots_list", parms={})
-            except Exception as exc:
-                log.info(f"Error getting snapshots list, skipping intent log cleanup")
-                return
+            all_snaps = self.get_snapshots(cluster)
             if all_snaps and len(all_snaps) > 0:    # only do cleanup if we're sure we have a connection
                 log.info(f"cluster all_snaps: {len(all_snaps)}")
                 local, remote, _ = self.get_records_pd()
