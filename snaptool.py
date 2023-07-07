@@ -30,7 +30,7 @@ import snapshots
 import background
 import flask_ui
 
-VERSION = "1.0.2"
+VERSION = "1.5.2"
 
 # get the root logger, get snaptool logger
 log = logging.getLogger()
