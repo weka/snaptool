@@ -21,10 +21,10 @@ months_long_names.remove('')
 months_all_names = months_abbr_names + months_long_names
 
 def is_everyday(every):
-    return every.lower() == "day"
+    return str(every).lower() == "day"
 
 def is_everymonth(every):
-    return every.lower() == "month"
+    return str(every).lower() == "month"
 
 def comma_string_to_list(comma_string):
     # Takes a string representing a comma separated list
@@ -90,16 +90,14 @@ def _parse_day_of_month(dom, name):
     return result
 
 def _parse_upload(upload, name):
-    if str(upload).lower() in ["yes", "true", "1"]:
-        return True
-    elif str(upload).lower() in ["local"]:
+    if str(upload).lower() in ["yes", "true", "1", "local"]:
         return 'LOCAL'
     elif str(upload).lower() in ["remote"]:
         return 'REMOTE'
     elif str(upload).lower() in ["no", "false", "0"]:
-        return False
+        return 'False'
     else:
-        log.error(f"Invalid upload specification, should be yes/no/true/false: {upload} for schedule {name}")
+        log.error(f"Invalid upload specification for schedule {name}; '{upload}' should be one of: yes, no, true, false, local, remote")
         log.error(f"Defaulting to false.")
         return False
 

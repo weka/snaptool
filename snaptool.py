@@ -11,7 +11,9 @@ import sys
 import argparse
 import platform
 import time
-import importlib_metadata
+import importlib_metadata as importmeta
+
+from wekalib import __version__ 
 
 import yaml
 import urllib3
@@ -41,7 +43,7 @@ running_as_service = os.getenv('LAUNCHED_BY_SYSTEMD', 'NO')
 
 def version_string():
     return (f"{sys.argv[0]} version: {VERSION}"
-            f" wekalib-version={importlib_metadata.version('wekalib')}"
+            f" wekalib-version={__version__}"
             f" docker={running_in_docker}"
             f" service={running_as_service}")
 
@@ -315,9 +317,9 @@ class ClusterConnection(object):
                 actions_log.info(f"Created snap {fs} - {name}")
                 log.info(f"   Snap {fs}/{name} created")
             upload_op = False
-            if upload == True or upload.upper() == 'LOCAL':
+            if upload == True or str(upload).upper() == 'LOCAL':
                 upload_op = "upload"
-            elif upload.upper() == 'REMOTE':
+            elif str(upload).upper() == 'REMOTE':
                 upload_op = "upload-remote"
             if upload_op:
                 background.QueueOperation(self.weka_cluster, fs, name, upload_op)
