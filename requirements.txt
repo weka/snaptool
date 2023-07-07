@@ -1,6 +1,6 @@
 ansible-core==2.12.2
 asn1crypto==1.2.0
-babel==2.7.0
+babel==2.12.1
 flask==2.3.2
 pandas==1.1.5
 pip-chill==1.0.3
