@@ -74,7 +74,10 @@ def _parse_spec_int(str_num, spec_name, name, min_allowed, max_allowed):
         log.error(f"Integer out of range: {result} for {spec_name} " +
                   f"in schedule {name} should be in the range [{min_allowed}-{max_allowed}]")
         log.error(f"Defaulting to {min_allowed}")
-        return min_allowed
+        if result < min_allowed:
+            return min_allowed
+        else:
+            return max_allowed
     return result
 
 def _parse_interval(interval, name):
