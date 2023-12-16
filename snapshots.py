@@ -102,11 +102,11 @@ def _parse_upload(upload, name):
         return False
 
 def _parse_time(at, name="Unknown"):
-    ignored_date = "20200101 "
     try:
+        ignored_date = "2020/01/01 "
         result = parser.parse(ignored_date + at)
     except parser.ParserError as exc:
-        errmsg = f"Invalid time spec: '{at}' for schedule {name}: {exc}"
+        errmsg = f"Error parsing time: Invalid time: '{at}' for schedule {name}: {exc}"
         log.error(errmsg)
         raise
     return result
@@ -176,8 +176,12 @@ def parse_schedule_entry(schedule_groupname, schedule_name, sched_spec):
         log.error(f"   Length of schedule group name + name must be less than 18 characters")
         log.error(f"   Ignoring entry.")
         return None, f"Schedule '{name}': name is too long"
-    every_type, every, retain, at, interval, until, upload, day = \
-        _parse_schedule_spec(sched_spec, name)
+    try:
+        every_type, every, retain, at, interval, until, upload, day = \
+            _parse_schedule_spec(sched_spec, name)
+    except Exception as exc:
+        log.error(f"Error parsing schedule {name} - schedule ignored")
+        return None, f"Schedule '{name}' parse error - ignored"
     if every_type == 'month':
         entry = MonthlyScheduleEntry(name, every, retain, at, day, upload)
     elif every_type == 'day' and interval:
@@ -365,7 +369,7 @@ def _run_schedule_test(test_name, entry, test_time, expected):
     else:
         _test_result_message(f"{success} {'':*<25} -- nextsnap: {result}   --   {success}", always_print)
         log.error(f"Self test {test_name} FAILED.  Check debug logs.")
-
+        log.error(f"       entry: {entry}")
 
 def run_schedule_tests():
     log.info(f"Snapshots schedule tests starting")
@@ -421,9 +425,15 @@ def run_schedule_tests():
     if __name__ == "__main":   # run intentional failure to check output/logging
         _run_schedule_test("i20-fail-INTENTIONAL", entry, datetime(2021, 6, 29, 11, 5, 59), "2021-06-29 11:05:01")
 
-    entry = IntervalScheduleEntry("I-everyday-0903-1700-1min", _parse_days('day'), 4, _parse_time("0000"),
+    entry = IntervalScheduleEntry("I-everyday-0000-2359-1min", _parse_days('day'), 4, _parse_time("0000", name="test0000-2359"),
                                   _parse_time("2359"), 1, False)
-    _run_schedule_test("i10-now-test", entry, datetime.now(), str(datetime.now() + relativedelta(second=0, microsecond=0)))
+    _run_schedule_test("i20-now-test", entry, datetime.now(), str(datetime.now() + relativedelta(second=0, microsecond=0)))
+    try:
+        entry = IntervalScheduleEntry("I-everyday-parsetime", _parse_days('day'), 4, _parse_time("256", name="test256"),
+                                  _parse_time("2359"), 1, False)
+        _run_schedule_test("i21-now-test", entry, datetime.now(), str(datetime.now() + relativedelta(second=0, microsecond=0)))
+    except Exception as exc:
+       log.error(f"Exception for I-everyday-parsetime parsing 256 {exc}")
     log.info(f"Snapshots schedule tests complete")
 
 
