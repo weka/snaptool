@@ -68,15 +68,16 @@ def _parse_spec_int(str_num, spec_name, name, min_allowed, max_allowed):
     try:
         result = int(str_num)
     except Exception as exc:
-        log.error(f"Invalid {spec_name}: {str_num} for schedule {name}: {exc}")
+        log.error(f"Invalid schedule spec {spec_name}: {str_num} for schedule {name} should be an int: {exc}")
         raise
     if result < min_allowed or result > max_allowed:
         log.error(f"Integer out of range: {result} for {spec_name} " +
-                  f"in schedule {name} should be in the range [{min_allowed}-{max_allowed}]")
-        log.error(f"Defaulting to {min_allowed}")
+                  f"in schedule {name} - should be in the range [{min_allowed}-{max_allowed}]")
         if result < min_allowed:
+            log.error(f"    Defaulting to {min_allowed}")
             return min_allowed
         else:
+            log.error(f"    Defaulting to {max_allowed}")
             return max_allowed
     return result
 
