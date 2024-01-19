@@ -26,9 +26,11 @@ intent_log = 'Global uninitialized'
 
 
 class UploadDownloadQueue(queue.Queue):
-    def __init__(self):
+    
+    def __init__(self, num_threads, init_msg):
         self.progress_messages = deque(maxlen=500)
-        self.progress_messages.append("Initializing/waiting...")
+        self.progress_messages.append(init_msg)
+        self.num_threads = num_threads
         self.locators = {}
         queue.Queue.__init__(self)
 
@@ -38,7 +40,9 @@ class UploadDownloadQueue(queue.Queue):
         log.info(m)
         self.progress_messages.append(m)
 
-background_q = UploadDownloadQueue()
+background_q_local = UploadDownloadQueue(1, "Initializing/waiting (local OBS queue)...")
+background_q_remote = UploadDownloadQueue(1, "Initializing/waiting (remote OBS queue)...")
+background_q_delete = UploadDownloadQueue(1, "Initializing/waiting (delete queue)...")
 
 def create_log_dir_file(filename):
     prevmask = os.umask(0)
@@ -234,7 +238,9 @@ def get_short_unique_id():     # returns a uuid4 that has been converted to base
 
 class QueueOperation(object):
     def __init__(self, cluster, fsname, snapname, op, loc='', bucket='', uuid_str=None, dt='now'):
-        global background_q
+        global background_q_local
+        global background_q_remote
+        global background_q_delete
         global intent_log
 
         self.fsname = fsname
@@ -253,20 +259,28 @@ class QueueOperation(object):
 
         # queue the request
         if op == "delete":
-            for i in list(background_q.queue):
+            for i in list(background_q_delete.queue):
                 if i.fsname == fsname and i.snapname == snapname and i.operation == "delete":
                     log.debug(f"duplicate delete for {fsname}/{snapname} {op} ignored")
-                    return           # already in the queue, don't queue again for deletes
+                    return           # already in the queue, don't queue again
+            background_q_delete.put(self)
+        # local OBS upload
+        elif op == "upload":
+            background_q_local.put(self)
+            log.info (f"Upload to local OBS queued for {fsname}/{snapname}")
+        # remote OBS upload
+        elif op == "upload-remote":
+            background_q_remote.put(self)
+            log.info (f"Upload to remote OBS queued for {fsname}/{snapname}")
+            
         if fsname != "WEKA_TERMINATE_THREAD" and snapname != "WEKA_TERMINATE_THREAD":
             intent_log.put_record(self.uuid, fsname, snapname, op, "queued")
-        background_q.put(self)
 
     def get_html(self):
         return f"{self.operation} {self.fsname}/{self.snapname}"
 
 # process operations in the background - runs in a thread - starts before replaying log
-def background_processor():
-    global background_q      # queue of QueueOperation objects
+def background_processor(queue):
     global intent_log       # log file(s) for all QueueOperation objects created, for replay if necessary
 
     def snapshot_status(q_snap_obj):
@@ -373,13 +387,13 @@ def background_processor():
         message = f"{op} complete: {fsname} - {snapname} locator: '{locator}' bucket: '{bucketname}'"
         if reason != "complete":
             message += f" ({reason})"
-        background_q.message(message)
+        queue.message(message)
         actions_log.info(message)
 
     def upload_in_progress(fsname, snapname, op, uuid, locator='', bucketname=''):
         intent_log.put_record(uuid, fsname, snapname, op, "in-progress", loc=locator, bucket=bucketname)
         message = f"{op} started: {fsname} - {snapname} locator: '{locator}' bucket: '{bucketname}'"
-        background_q.message(message)
+        queue.message(message)
         actions_log.info(message)
 
     def delete_completed(fsname, snapname, op, uuid, locator='', bucketname='', reason="deleted"):
@@ -387,13 +401,13 @@ def background_processor():
         message = f"{op} complete: {fsname} - {snapname} locator: '{locator}' bucket: '{bucketname}'"
         if reason != "deleted":
             message += f" ({reason})"
-        background_q.message(message)
+        queue.message(message)
         actions_log.info(message)
 
     def delete_in_progress(fsname, snapname, op, uuid, locator='', bucketname=''):
         intent_log.put_record(uuid, fsname, snapname, "delete", "complete", loc=locator, bucket=bucketname)
         message = f"{op} started: {fsname} - {snapname} locator: '{locator}' bucket: '{bucketname}'"
-        background_q.message(message)
+        queue.message(message)
         actions_log.info(message)
 
     def upload_snap(q_upload_obj):
@@ -404,7 +418,7 @@ def background_processor():
         uuid = q_upload_obj.uuid
         cluster = q_upload_obj.cluster
         locator = ''
-        bq = background_q
+        bq = queue
 
         try:
             snap_stat = snapshot_status(q_upload_obj)
@@ -505,7 +519,7 @@ def background_processor():
         bucket = q_del_object.bucket
         bucketname = ''
         message = f"Deleting snap {fsname}/{snapname}"
-        bq = background_q
+        bq = queue
         bq.message(message)
         # maybe do a snap_status() so we know if it has an object locator and can reference the locator later?
         try:
@@ -582,60 +596,50 @@ def background_processor():
             sleeptime = sleep_time(loopcount, progress)
             time.sleep(sleeptime)  # give it some time to delete, check in based on progress/loop count
 
-    #
-    # main background_processor() logic here:
-    #
-
-    main_thread = threading.main_thread()
-
-    time.sleep(10)  # delay start until something happens.  ;)
-    log.info("background_uploader starting...")
-
     while True:
-        # take item off queue
-        try:
-            # don't block forever so we can keep an eye on the main thread
-            # background_q.get() returns a QueueOperation object
-            snapq_op = background_q.get(block=True, timeout=1)  # block for up to 1s
-        except queue.Empty:
-            # log.debug(f"Queue get timed out; nothing in queue.")
-            if main_thread.is_alive():
-                # log.debug(f"Main thread is alive")
-                continue
-            else:
-                log.debug(f"Main thread is dead, exiting uploader thread")
-                # main thread died - exit so the program exits; we can't live without the main thread
-                return
-
-        log.debug(f"Queue entry received {snapq_op.fsname}, {snapq_op.snapname}, {snapq_op.operation}")
-
+        snapq_op = queue.get(block=True)
         if snapq_op.fsname == "WEKA_TERMINATE_THREAD" and snapq_op.snapname == "WEKA_TERMINATE_THREAD":
-            log.info(f"background_processor: terminating thread")
+            log.info(f"terminating thread")
             return
-
-        if snapq_op.operation == "upload" or snapq_op.operation == "upload-remote":
-            time.sleep(3)   # slow down... make sure the snap is settled.
-            upload_snap(snapq_op)   # handles its own errors
+        elif snapq_op.operation == "upload" or snapq_op.operation== "upload-remote":
+            log.debug(f"Upload queue entry received {snapq_op.fsname}, {snapq_op.snapname}, {snapq_op.operation}")
+            time.sleep(3)
+            upload_snap(snapq_op)
         elif snapq_op.operation == "delete":
-            time.sleep(0.3)   # less time between deletes
+            log.debug(f"Delete queue entry received {snapq_op.fsname}, {snapq_op.snapname}, {snapq_op.operation}")
+            time.sleep(0.3)
             delete_snap(snapq_op)
-        # elif snap.operation == "create":
-        #     create_snap(snap)
+        else:
+            log.debug(f"Invalid {snapq_op.operation} on queue!")
 
 
 # module init
 def init_background_q():
+    global background_q_local      # queue of QueueOperation objects for local OBS
+    global background_q_remote     # queue of QueueOperation objects for remote OBS
+    global background_q_delete     # queue of QueueOperation objjects for deletes
     global intent_log
+    
     if intent_log == 'Global uninitialized':
         intent_log = IntentLog(intent_log_filename)
-        # background_q.locators = intent_log.undeleted_locators()
-        background_q.locators = intent_log.get_records_pd()
-        # start the upload thread
-        background_q_thread = threading.Thread(target=background_processor)
-        background_q_thread.daemon = True
-        background_q_thread.start()
-        log.info(f"background_thread = {background_q_thread}")
-        background_q.message("Upload/download queue process started...")
+        
+        background_q_local.locators = intent_log.get_records_pd()
+        background_q_remote.locators = intent_log.get_records_pd()
+        background_q_delete.locators = intent_log.get_records_pd()
+        
+        # start the worker threads
+        for i in range(background_q_local.num_threads):
+            background_q_thread=threading.Thread(target=background_processor, args=(background_q_local,), daemon=True).start()
+            log.info(f"background_thread starting (local OBS queue) = {background_q_thread}")
+
+        for i in range(background_q_remote.num_threads):
+            background_q_thread=threading.Thread(target=background_processor, args=(background_q_remote,), daemon=True).start()
+            log.info(f"background_thread starting (remote OBS queue) = {background_q_thread}")
+
+        for i in range(background_q_delete.num_threads):
+            background_q_thread=threading.Thread(target=background_processor, args=(background_q_delete,), daemon=True).start()
+            log.info(f"background_thread starting (delete queue) = {background_q_thread}")
+
     return intent_log
 
 
@@ -686,3 +690,4 @@ if __name__ == "__main__":
 
     background_q_thread.join()
 """
+

@@ -25,32 +25,74 @@
     </table>
     <h1></h1>
     <table class="configinfotable">
-      <tr><td>Cluster Connection Hosts:</td><td> {{ configobj.cluster_connection.clusterspec }}</td>
+      <tr><td>Cluster connection hosts:</td><td> {{ configobj.cluster_connection.clusterspec }}</td>
       <tr><td>Authfile:</td><td>  {{ configobj.cluster_connection.authfile }}</td>
       <tr><td>Config file:</td><td>  {{ configobj.configfile }}</td>
-      <tr><td>Configuration file modification time:</td><td>  {{ configobj.configfile_time.strftime("%x %X") }}</td>
+      <tr><td>Configuration last modified:</td><td>  {{ configobj.configfile_time.strftime("%x %X") }}</td>
       <tr><td>Cluster connected since:</td><td>  {{ configobj.cluster_connection.connected_since.strftime("%x %X") }}</td>
-      <tr><td>Cluster Name</td><td> {{ configobj.cluster_connection.weka_cluster_name }}</td>
+      <tr><td>Cluster name:</td><td> {{ configobj.cluster_connection.weka_cluster_name }}</td>
       </table>
     </div>
 </div>
 <h2></h2>
 <div class="divwrapper roundedborders">
 <div class="divwrapperleft">
-  <h2>Upload/Delete queue:</h2>
-  {% if q_size > 0 %}
-  <p>{{q_size}} entries.</p>
+  <h2>Upload Local Queue:</h2>
+  {% if q_size_local > 0 %}
+  <p>{{q_size_local}} entries.</p>
   {% endif %}
 </div>
 <div class="divwrapperright">
   <table class="queue">
     <h2></h2>
-    {% if q_size > 0 %} 
+    {% if q_size_local > 0 %} 
         {% for e in q %}
          <tr><td>{{ e.operation }}</td><td>{{e.fsname}}</td><td>{{e.snapname}}</td>
         {% endfor %}
       {% else %}
-        <tr><td>Nothing in queue</td></tr>
+        <tr><td>Queue empty</td></tr>
+      {% endif %}
+  </table>
+</div>
+</div>
+<h2></h2>
+<div class="divwrapper roundedborders">
+<div class="divwrapperleft">
+  <h2>Upload Remote Queue:</h2>
+  {% if q_size_remote > 0 %}
+  <p>{{q_size_remote}} entries.</p>
+  {% endif %}
+</div>
+<div class="divwrapperright">
+  <table class="queue">
+    <h2></h2>
+    {% if q_size_remote > 0 %} 
+        {% for e in q %}
+         <tr><td>{{ e.operation }}</td><td>{{e.fsname}}</td><td>{{e.snapname}}</td>
+        {% endfor %}
+      {% else %}
+        <tr><td>Queue empty</td></tr>
+      {% endif %}
+  </table>
+</div>
+</div>
+<h2></h2>
+<div class="divwrapper roundedborders">
+<div class="divwrapperleft">
+  <h2>Upload Delete Queue:</h2>
+  {% if q_size_delete > 0 %}
+  <p>{{q_size_delete}} entries.</p>
+  {% endif %}
+</div>
+<div class="divwrapperright">
+  <table class="queue">
+    <h2></h2>
+    {% if q_size_delete > 0 %} 
+        {% for e in q %}
+         <tr><td>{{ e.operation }}</td><td>{{e.fsname}}</td><td>{{e.snapname}}</td>
+        {% endfor %}
+      {% else %}
+        <tr><td>Queue empty</td></tr>
       {% endif %}
   </table>
 </div>

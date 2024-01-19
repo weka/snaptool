@@ -34,10 +34,10 @@ def str_schedule_group(group):
         html += str_schedule(sg)
     return html
 
-def get_progress_list():
+def get_progress_list(queue):
     try:
-        if background.background_q and background.background_q.progress_messages is not None:
-            messagelist = list(background.background_q.progress_messages)
+        if queue and queue.progress_messages is not None:
+            messagelist = list(queue.progress_messages)
             progress = "\n".join(messagelist)
             progress = f"{progress}"
             return progress
@@ -85,8 +85,10 @@ def show_config_file():
 @app.route("/progress")
 def snaptool_progress():
     try:
-        progress = get_progress_list()
-        return render_template("progress.html", configobj=sconfig, progress=progress)
+        progress_local = get_progress_list(background.background_q_local)
+        progress_remote = get_progress_list(background.background_q_remote)
+        progress_delete = get_progress_list(background.background_q_delete)
+        return render_template("progress.html", configobj=sconfig, progress_local=progress_local, progress_remote=progress_remote, progress_delete=progress_delete)
     except Exception as exc:
         html = traceback.format_exc()
         return render_template("error.html", message=f"error: <br><br>{html}")
@@ -95,17 +97,27 @@ def snaptool_progress():
 def snaptool_main_menu():
     try:
         app.logger.info(f"snaptool_main_menu rendering...")
-        q_size = background.background_q.qsize()
-        q = background.background_q.queue
-        progress = get_progress_list()
-        app.logger.info(f"got progress list: {progress}")
+        q_size_local = background.background_q_local.qsize()
+        q_local = background.background_q_local.queue
+        progress_local = get_progress_list(background.background_q_local)
+        app.logger.info(f"got progress list local: {progress_local}")
+        
+        q_size_delete = background.background_q_delete.qsize()
+        q_delete = background.background_q_delete.queue
+        progress_delete = get_progress_list(background.background_q_delete)
+        app.logger.info(f"got progress list delete: {progress_delete}")
+        
+        q_size_remote = background.background_q_remote.qsize()
+        q_remote = background.background_q_remote.queue
+        progress_remote = get_progress_list(background.background_q_remote)
+        app.logger.info(f"got progress list remote: {progress_remote}")
     except Exception as exc:
         app.logger.error(f"error getting main page background process info: {exc}")
     try:
         if sconfig and sconfig.schedules_dict and sconfig.configfile:
             app.logger.info(f"configobj: {sconfig} ie: {sconfig.ignored_errors} e:{sconfig.errors}")
             app.logger.info(f"scheduleddict: {sconfig.schedules_dict}")
-            return render_template("index.html", configobj=sconfig, q=q, q_size=q_size, progress=progress)
+            return render_template("index.html", configobj=sconfig, q_local=q_local, q_size_local=q_size_local, progress_local=progress_local, q_delete=q_delete, q_size_delete=q_size_delete, progress_delete=progress_delete, q_remote=q_remote, q_size_remote=q_size_remote, progress_remote=progress_remote)
         elif not sconfig:
             return render_template("error.html", message="sconfig not initialized")
         elif not sconfig.schedules_dict:
@@ -114,7 +126,7 @@ def snaptool_main_menu():
             return render_template("error.html", message="sconfig configfile not initialized")
     except Exception as exc:
         html = f"{traceback.format_exc()}"
-        return render_template("error.html", f"error: {html}")
+        return render_template("error.html", message=f"error: {html}")
 
 @app.get("/shutdownthread")
 def shutdown_thread():

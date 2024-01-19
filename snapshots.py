@@ -98,10 +98,12 @@ def _parse_upload(upload, name):
         return 'LOCAL'
     elif str(upload).lower() in ["remote"]:
         return 'REMOTE'
+    elif str(upload).lower() in ["both"]:
+        return 'BOTH'
     elif str(upload).lower() in ["no", "false", "0"]:
         return 'False'
     else:
-        log.error(f"Invalid upload specification for schedule {name}; '{upload}' should be one of: yes, no, true, false, local, remote")
+        log.error(f"Invalid upload specification for schedule {name}; '{upload}' should be one of: yes, no, true, false, local, remote, both")
         log.error(f"Defaulting to false.")
         return False
 

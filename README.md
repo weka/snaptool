@@ -5,9 +5,12 @@ A solution that implements snapshot management for Weka Clusters
 
 # Features
 
+- New in release 1.6:
+    - 'both' configuration option for upload: The addition of the "upload: both" configuration option, permits concurrent uploads to both the local and remote OBS.
+
 - New in release 1.5: 
-    - a status GUI that provides web interface to view snapshot schedules, The upload/download queue for snapshot uploads, and locator IDs for snapshots that have beenn successfully uploaded.  By default this web server runs on http://(snaptool server):8090 .  The port can be set in the snaptool.yml file.   Setting it to 0 will disable the web server.
-    - 'remote' option to the upload: keyword in schedules
+    - a status GUI that provides a web interface to view snapshot schedules. The upload/download queue for snapshot uploads, and locator IDs for snapshots that have been successfully uploaded.  By default, this web server runs on http://(snaptool server):8090.  The port can be set in the snaptool.yml file.  Setting it to 0 will disable the web server.
+    - 'remote' configuration option for upload: The additon of the "upload: remote" configuration option, permits uploads to the remote OBS.
 
 - Schedule snapshots monthly, daily, or at multiple (minute granularity) intervals during a daily schedule.
 - Retention rules - each schedule controls the number of snapshot copies to retain.
@@ -15,14 +18,14 @@ A solution that implements snapshot management for Weka Clusters
 - Optionally, snapshots can automatically be uploaded to an S3 Object Store, either local or remote (a tiering object store, or a remote backup object store).  
     - Snapshots in local object stores are also deleted based on the retention rule for a schedule.
     - For remote (backup) snapshots: When snapshots are deleted locally on the filesystem, the snapshot will be deleted, but the remote backup copy is not.  They are available for restore via the locator ID beyond the life of the original snapshot.
-- Snapshots are created per schedules.   Uploads to object stores and deletes occur in a background process via a background queue.
+- Snapshots are created per schedules.  Uploads to object stores and deletes occur in a background process via a background queue.
 
 
-- Note: Configuration files from releases before 1.0.0 are not compatible with 1.0.0 and above.   They will need to be modified to use the new syntax.
+- Note: Configuration files from releases before 1.0.0 are not compatible with 1.0.0 and above.  They will need to be modified to use the new syntax.
 
 # Installation
 
-The latest binary release of snaptool can be downloaded as a tarball from https://github.com/weka/snaptool/releases/latest.  Download it to a temporary location or to /opt/weka.
+The latest binary release of snaptool can be downloaded as a tarball from https://github.com/weka/snaptool/releases/latest.  Download it to a temporary location, or to /opt/weka.
 
 Before proceeding, make a copy of your existing snaptool.yml, if a previous version exists.   
 
@@ -30,29 +33,29 @@ Next, extract the snaptool bundle:
 
     tar xvf snaptool-<version>.tar
 
-The extracted configuration file snaptool/snaptool.yml file should now need to be edited for the local environment (or replaced if you have a previous, compatible, version).  See details below for configuration syntax.  
+The extracted configuration file, snaptool/snaptool.yml, should now be edited for the local environment (or replaced if you have a previous, compatible, version).  See details below for configuration syntax.  
 
 
 Tips:
-- snaptool will not start without the ability to connect to a cluster, so you must edit the yml file to include valid cluster hosts
-- If an older version of snaptool exists, please stop all related processes before installing, and backup your yml file
+- IMPORTANT: snaptool will not start without the ability to connect to a cluster. You must edit the yml file to include valid cluster hosts
+- If an older version of snaptool exists, please stop all related processes before installing and backup your yml file
 - Run the installer with administrator/root privileges
 - The snaptool.service file can be edited if other snaptool command line options need to be provided
 - The installer will try to preserve an existing snaptool.yml file, if it exists in the install destination directory
 
-Once the snaptool.yml file contains connection, filesystem, and schedule information for the local weka cluster, snaptool can be installed as a systemd service as follows:
+Once the snaptool.yml file contains connection, filesystem, and schedule information, for the local weka cluster, snaptool can be installed, as a systemd service, as follows:
   
     cd snaptool
     ./install.sh
 
 The installer does the following:
-- Modifies the systemd unit file (snaptool.service) to the installation target directory if it isn't /opt/weka/snaptool.
-- Copies the executable and yml file to the installation directory (typically /opt/weka/snaptool) - if a configuration yml file exists, the installer attempts to preserve it
+- Modifies the systemd unit file (snaptool.service) to the installation target directory if it is not /opt/weka/snaptool.
+- Copies the executable and yml file to the installation directory (typically /opt/weka/snaptool).  If a configuration yml file exists, the installer attempts to preserve it
 - Briefly tests connectivity to the weka cluster, to validate cluster settings in the snaptool.yml file
 - Copies the systemd unit file (snaptool.service) to /etc/systemd/system
 - Enables and starts the snaptool.service service via systemctl
 
-Snaptool can also be run in docker - if that is the desired deployment, see the "Running in Docker" section below.
+Snaptool can also be run in docker. If that is the desired deployment, see the "Running in Docker" section below.
 
 # Configuration
 
@@ -63,7 +66,7 @@ A YAML file provides configuration information. The default configuration file n
     filesystems: 
     schedules:
 
-Cluster information is in the 'cluster:' section.  The hosts list is required.   Other entries in this section are optional but are recommended for clarity.  See the example snaptool.yml, below, for valid syntax.  Entries allowed are:
+Cluster information is in the 'cluster:' section.  The hosts list is required.  Other entries in this section are optional, but are recommended for clarity.  See the example snaptool.yml, below, for valid syntax.  Entries allowed are:
 
     cluster:
         auth_token_file: 
@@ -71,22 +74,22 @@ Cluster information is in the 'cluster:' section.  The hosts list is required.  
         force_https: 
         verify_cert: 
 
-The snaptool: section allows a single keyword 'port:' which is the network port that will be used to run the web status UI.   If this is 0, the web status UI will be shut down.  The default is 8090 if not provided (if not provided, this can also be overriden at the command line, but the snaptool.yml setting will supercede the command line argument).
+The snaptool: section allows a single keyword 'port:' which is the network port that will be used to run the web status UI.  If this is 0, the web status UI will be shut down.  The default port is 8090.  If not provided, this can also be overriden at the command line, but the snaptool.yml setting will supercede the command line argument.
 
     snaptool:
         port: 8090
 
-Filesystems are in the 'filesystems' section, and these entries define which snapshot schedule(s) will run for the listed filesystems.  Each filesystem line looks like:
+Filesystems are in the 'filesystems' section, and these entries define which snapshot schedule(s) will run for the listed filesystems.  Each filesystem line has the following format:
 
     <fsname>:  <schedule1>,<schedule2>...
 
-Schedules Syntax is below.   Schedules that are within a schedule group cannot be assigned separately from the group.  The groupname must be used.
+Schedules syntax is below.  Schedules that are within a schedule group cannot be assigned separately from the group.  The groupname must be used.
 
 Using the example configuration file (YAML file), define your filesystems and which schedule(s) they should use.  Also define custom schedules in the YAML file.  Schedule keywords and syntax are shown below.
 
 To indicate that a particular schedule (i.e.: monthly, weekly) should not run on a filesystem, set the "retain" to 0, or remove it from the filesystem's schedule list.  
 
-snaptool reloads the YAML configuration file before calculating the next set of snapshot runs, if at least 5 minutes have passed since the last reload.
+Snaptool reloads the YAML configuration file, before calculating the next set of snapshot runs, if at least 5 minutes have elapsed since the last reload.
 
 # Schedule Syntax
            
@@ -110,7 +113,7 @@ Each schedule has the following syntax:
                     - day: defaults to 1, first day of the month
                     - if day > last day of a month (example: day is 31 and the month is April), 
                         then the snap is taken on the last day of the month
-                    - list of months can be 3 character mon abbreviations, or full month names.  For eample:
+                    - list of months can be 3 character month abbreviations, or full month names.  For example:
                         "Jan,Jul"
                         "January,April,Aug,Oct"
 
@@ -137,6 +140,7 @@ Each schedule has the following syntax:
             upload: defaults to no/False 
                 - 'Local' or 'True' uploads a copy of the snapshot to the local object store associated with the filesystem (the tiering object store).  
                 - 'Remote' will upload a copy of the snapshot to the object store attached as 'Remote' for the filesystem (for backups).
+                - 'Both' will upload a copy of the snapshot to both the local and remote object stores associated with the filesystem.
 
 
 
@@ -187,13 +191,13 @@ example snaptool.yml:
 
 # Snapshot Naming
 
-The format of the snapshot names is schedulename.YYMMDDHHMM, with the access point @GMT-YYYY.MM.DD-HH.MM.SS.   For example, a snapshot might be named 'Weekends-noon.2103101200' and have the access point @GMT-2021.03.10-12.00.00.  The snapshot name will be in the local timezone, and the access point in GMT.  (In this example, the server timezone is set to GMT time)
+The format of the snapshot names is schedulename.YYMMDDHHMM, with the access point @GMT-YYYY.MM.DD-HH.MM.SS.  For example, a snapshot might be named 'Weekends-noon.2103101200' and have the access point @GMT-2021.03.10-12.00.00.  The snapshot name will be in the local timezone, and the access point in GMT.  (In this example, the server timezone is set to GMT time)
     
-For grouped snapshots, the name will be schedulegroupname_schedulename.   The full name can't be longer than 18 characters.  For example, 'default' schedule group with an 'hourly' schedule in it might be named 'default_hourly.YYMMDDHHMM'.
+For grouped snapshots, the name will be schedulegroupname_schedulename.  The full name cannot be longer than 18 characters.  For example, 'default' schedule group with an 'hourly' schedule in it might be named 'default_hourly.YYMMDDHHMM'.
 
-When deleting snapshots automatically, based on the 'retain:' keyword, snapshots for a schedule and filesystem are sorted by creation time, and the oldest snapshots will be deleted until there are "retain:" snapshots left for the applicable Schedule and filesystem.
+When deleting snapshots automatically, based on the 'retain:' keyword, snapshots for a schedule and filesystem are sorted by creation time, and the oldest snapshots will be deleted until there are "retain:" snapshots left for the applicable schedule and filesystem.
 
-Note that snaptool does not distinguish between user-created and snaptool-created snapshots, other than by the name, so when creating user-created snapshots, you should use a different naming format; if the same naming format is used, the user-created snapshots may be selected for deletion automatically.
+WARNING: Note that snaptool does not distinguish between user-created and snaptool-created snapshots, other than by the name. When creating user-created snapshots, you should use a different naming format. If the same naming format is used, the user-created snapshots may be selected for deletion automatically.
 
 # Command-line Arguments
 
@@ -212,7 +216,7 @@ Examples:
 
 # Running in Docker
 
-The latest release of snaptool can be downloaded from docker hub ('docker pull wekasolutions/snaptool').   A sample docker-run.sh file that provides the necessary parameters to run the snaptool docker image is included in the binary release mentioned above; its contents are shown here also.  A sample snaptool.yml is also included.
+The latest release of snaptool can be downloaded from docker hub ('docker pull wekasolutions/snaptool').  A sample docker-run.sh file, that provides the necessary parameters to run the snaptool docker image, is included in the binary release mentioned above.  Its contents are also shown here.  A sample snaptool.yml is also included.
 
 The configuration yml file is expected to be in the current directory when running within docker.
 

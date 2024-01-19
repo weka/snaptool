@@ -30,7 +30,7 @@ import snapshots
 import background
 import flask_ui
 
-VERSION = "1.5.3"
+VERSION = "1.6.0"
 
 # get the root logger, get snaptool logger
 log = logging.getLogger()
@@ -319,10 +319,14 @@ class ClusterConnection(object):
             upload_op = False
             if upload == True or str(upload).upper() == 'LOCAL':
                 upload_op = "upload"
+                background.QueueOperation(self.weka_cluster, fs, name, upload_op)
             elif str(upload).upper() == 'REMOTE':
                 upload_op = "upload-remote"
-            if upload_op:
                 background.QueueOperation(self.weka_cluster, fs, name, upload_op)
+            elif str(upload).upper() == 'BOTH':
+                upload_op = "upload-local-remote"
+                background.QueueOperation(self.weka_cluster, fs, name, "upload")
+                background.QueueOperation(self.weka_cluster, fs, name, "upload-remote")
         except Exception as exc:
             log.error(f"Error creating snapshot {name} on filesystem {fs}: {exc}")
 
@@ -457,7 +461,7 @@ class SnaptoolConfig(object):
             clusterspec = cluster_yaml['hosts']
         else:
             m = f"A clusterspec is required in the config file."
-            background.background_q.message(m)
+            background.background_q_local.message(m)
             log.error(m)
             clusterspec = ''
         if 'auth_token_file' in cluster_yaml:
@@ -465,7 +469,7 @@ class SnaptoolConfig(object):
         else:
             m = f"No auth file specified, trying auth-token.json"
             log.warning(m)
-            background.background_q.message(m)
+            background.background_q_local.message(m)
             authfile = "auth-token.json"
         if 'force_https' in cluster_yaml:
             force_https = _parse_bool(cluster_yaml['force_https'])
@@ -634,7 +638,7 @@ class SnaptoolConfig(object):
         else:
             sleep_msg = f"Sleep until {next_snap_time} ({sleep_time_left}s), then snap: {snaps_msg_str}"
         log.info(sleep_msg)
-        background.background_q.message(sleep_msg)
+        background.background_q_local.message(sleep_msg)
         self.next_snap_time = next_snap_time
         self.next_snaps_dict = next_snaps_dict
         return next_snap_time, next_snaps_dict, sleep_time_left
@@ -711,7 +715,7 @@ def main():
         snaptool_config.resolved_actions_log = actions_log_resolved_file
         m = "Initializing background q and replaying operation intent log..."
         log.info(m)
-        background.background_q.message(m)
+        background.background_q_local.message(m)
         background.init_background_q()
 
     if args.http_port != 0:
@@ -733,11 +737,11 @@ def main():
                 cerror = f"Config found but no cluster_connection"
             else:
                 cerror = f"Snaptool configuration file {args.configfile} not found"
-            background.background_q.message(cerror)
+            background.background_q_local.message(cerror)
             log.info(cerror)
             time.sleep(15)
         else:
-            background.background_q.message("Connected to cluster")
+            background.background_q_local.message("Connected to cluster")
             
     background.intent_log.replay(snaptool_config.cluster_connection.weka_cluster)
 
