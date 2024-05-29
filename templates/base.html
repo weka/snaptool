@@ -14,9 +14,10 @@
         <img src="{{ url_for('static', filename='new-logo-white.png') }}" alt="weka logo">
     </a>
     <a class="hover" href="{{ url_for('snaptool_main_menu') }}">Home</a>
-    <a class="hover" href="{{ url_for('show_locators') }}">Locator IDs</a>
+    <a class="hover" href="{{ url_for('show_locators') }}">Snaptool Locator IDs</a>
+    <a class="hover" href="{{ url_for('show_all_snaps') }}">All Snapshots</a>
     <a class="hover" href="{{ url_for('show_config_file') }}">Config File</a>
-    <a class="hover" href="{{ url_for('snaptool_progress') }}">Log</a>
+    <a class="hover" href="{{ url_for('show_logs') }}">Log</a>
     <div class="animation"></div>
   </nav>
     {% block header %}{% endblock %}

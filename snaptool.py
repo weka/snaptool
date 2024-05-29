@@ -357,6 +357,7 @@ class ClusterConnection(object):
         snapshot_list = self.call_weka_api("snapshots_list", {})
         if isinstance(snapshot_list, dict):
             snapshot_list = list(snapshot_list.values())
+        log.debug(f"get_snapshots: {[s['name'] for s in snapshot_list]}")
         return snapshot_list
 
     def delete_old_snapshots(self, parsed_schedules_dict):

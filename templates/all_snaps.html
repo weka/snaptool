@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+
+{% block header %}
+  <h1>All cluster snapshots</h1>
+{% endblock %}
+
+{% block content %}
+
+<div class="locdiv">
+  <table class="loctable">  
+    <thead>
+      <tr>
+        <th class="loctableth">Filesystem</th>
+        <th class="loctableth">Snapname</th>
+        <th class="loctableth">Local Locator</th>
+        <th class="loctableth">Remote Locator</th>
+      </tr>
+    </thead>
+  {% for t in allsnaps %}
+      <tr>
+        <td>{{t['filesystem']}}</td>
+        <td>{{t['name']}}</td>
+        <td>{{t['localStowInfo']['locator']}}</td>
+        <td>{{t['remoteStowInfo']['locator']}}</td>
+      </tr>
+  {% endfor %}
+</table>
+</div>
+<br>
+<br>
+
+<br>
+
+{% endblock %}

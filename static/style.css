@@ -40,7 +40,7 @@ li {font-weight:normal; }
     color: white;
     border-radius: 4px;
 }
-.progresslist {
+.loglist {
     max-height: 35em;
     overflow-y: auto;
     display: flex;

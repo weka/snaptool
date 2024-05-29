@@ -34,7 +34,7 @@ def str_schedule_group(group):
         html += str_schedule(sg)
     return html
 
-def get_progress_list():
+def get_logs():
     try:
         if background.background_q and background.background_q.progress_messages is not None:
             messagelist = list(background.background_q.progress_messages)
@@ -46,24 +46,20 @@ def get_progress_list():
         app.logger.warning(f"error getting progress list: {exc}")
         return ["error getting progress list"]
     
-@app.route("/alog")
-def show_actions_log():
-    try:
-        if sconfig and sconfig.resolved_actions_log and sconfig.resolved_actions_log is not None:
-            with open(sconfig.resolved_actions_log, "r") as f:
-                logblob = f.read()
-            entries = logblob.splitlines(True)
-            revlog = "".join(reversed(entries))
-            return render_template('actions_log.html', logtext=revlog)
-    except Exception as exc:
-        html = traceback.format_exc()
-        return render_template("error.html", message=f"error: <br><br>{html}")
-
 @app.route("/locs")
 def show_locators():
     try:
         locators = background.intent_log.get_records_pd()
         return render_template('locators.html', locators=locators)
+    except Exception as exc:
+        html = traceback.format_exc()
+        return render_template("error.html", message=f"error: <br><br>{html}")
+
+@app.route("/all_snaps")
+def show_all_snaps():
+    try:
+        allsnaps = sconfig.cluster_connection.get_snapshots()
+        return render_template('all_snaps.html', allsnaps=allsnaps)
     except Exception as exc:
         html = traceback.format_exc()
         return render_template("error.html", message=f"error: <br><br>{html}")
@@ -82,11 +78,24 @@ def show_config_file():
         html = traceback.format_exc()
         return render_template("error.html", message=f"error: {html}")
 
-@app.route("/progress")
-def snaptool_progress():
+@app.route("/log")
+def show_logs():
     try:
-        progress = get_progress_list()
-        return render_template("progress.html", configobj=sconfig, progress=progress)
+        logs = get_logs()
+        return render_template("log.html", configobj=sconfig, logs=logs)
+    except Exception as exc:
+        html = traceback.format_exc()
+        return render_template("error.html", message=f"error: <br><br>{html}")
+
+@app.route("/alog")
+def show_actions_log():
+    try:
+        if sconfig and sconfig.resolved_actions_log and sconfig.resolved_actions_log is not None:
+            with open(sconfig.resolved_actions_log, "r") as f:
+                logblob = f.read()
+            entries = logblob.splitlines(True)
+            revlog = "".join(reversed(entries))
+            return render_template('actions_log.html', logtext=revlog)
     except Exception as exc:
         html = traceback.format_exc()
         return render_template("error.html", message=f"error: <br><br>{html}")
@@ -97,7 +106,7 @@ def snaptool_main_menu():
         app.logger.info(f"snaptool_main_menu rendering...")
         q_size = background.background_q.qsize()
         q = background.background_q.queue
-        progress = get_progress_list()
+        progress = get_logs()
         app.logger.info(f"got progress list: {progress}")
     except Exception as exc:
         app.logger.error(f"error getting main page background process info: {exc}")
