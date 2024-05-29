@@ -11,9 +11,10 @@ import sys
 import argparse
 import platform
 import time
-import importlib_metadata as importmeta
+# import importlib_metadata as importmeta
 
 from wekalib import __version__ 
+WEKALIBVERSION = __version__
 
 import yaml
 import urllib3
@@ -29,8 +30,9 @@ import wekalib.wekacluster as wekacluster
 import snapshots
 import background
 import flask_ui
+from contextlib import contextmanager
 
-VERSION = "1.5.3"
+VERSION = "1.6.1"
 
 # get the root logger, get snaptool logger
 log = logging.getLogger()
@@ -41,9 +43,18 @@ actions_log_resolved_file = None
 running_in_docker = os.getenv('IN_DOCKER_CONTAINER', 'NO')
 running_as_service = os.getenv('LAUNCHED_BY_SYSTEMD', 'NO')
 
+@contextmanager
+def logging_level(level):
+    old_level = log.getEffectiveLevel()
+    log.setLevel(level)
+    try:
+        yield
+    finally:
+        log.setLevel(old_level)
+
 def version_string():
     return (f"{sys.argv[0]} version: {VERSION}"
-            f" wekalib-version={__version__}"
+            f" wekalib-version={WEKALIBVERSION}"
             f" docker={running_in_docker}"
             f" service={running_as_service}")
 
@@ -65,6 +76,10 @@ def parse_snaptool_args():
                             # help="format for access point name.  Default format supports Windows Previous versions.  If using SMB you probably shouldn't change this."
                             help=argparse.SUPPRESS
                             )
+    argparser.add_argument("--retain-max", dest="retain_max", default=365, type=int,
+                            # help="max value for schedule 'retain'"
+                            help=argparse.SUPPRESS
+                            )
     args = argparser.parse_args()
 
     if args.version:
@@ -83,6 +98,18 @@ def parse_snaptool_args():
         loglevel = logging.DEBUG
 
     return args, loglevel
+
+def check_other_snaptool_args(args):
+    rmin = snapshots.RETAIN_MIN
+    rlim = snapshots.RETAIN_LIMIT
+    rmax = snapshots.RETAIN_MAX
+    if args.retain_max >= rmin and args.retain_max <= rlim:
+        if  args.retain_max != rmax:
+            snapshots.RETAIN_MAX = args.retain_max
+            with logging_level(logging.INFO):
+                log.info(f"Hidden arg retain-max set to non-standard {snapshots.RETAIN_MAX}")
+    else:
+        log.error(f"Ignoring invalid retain-max arg ({args.retain_max}).  Valid range is [{rmin},{rlim}]; using default ({rmax})")
 
 def now():
     return datetime.datetime.now()
@@ -328,6 +355,8 @@ class ClusterConnection(object):
 
     def get_snapshots(self):
         snapshot_list = self.call_weka_api("snapshots_list", {})
+        if isinstance(snapshot_list, dict):
+            snapshot_list = list(snapshot_list.values())
         return snapshot_list
 
     def delete_old_snapshots(self, parsed_schedules_dict):
@@ -675,11 +704,13 @@ def get_snaps_dict_by_fs(snapgroups_for_nextsnap, next_snap_time):
 
 def get_fs_snaps(all_snaps, fs, schedname):
     # return snaps for fs that are named <schedname>.<something>, return them sorted by creation time
+    # <something> has to be a 10 digit string of digits (looks like yymmddhhmm)
     log.debug(f"Getting snaps specific to {fs} and {schedname}")
     snaps_for_fs = []
     for s in all_snaps:
         snap_name = s['name'].split('.')
-        if s['filesystem'] == fs and len(snap_name) == 2 and snap_name[0] == schedname:
+        if s['filesystem'] == fs and len(snap_name) == 2 and snap_name[0] == schedname \
+                                 and snap_name[1].isdigit() and len(snap_name[1]) == 10:
             snaps_for_fs.append(s)
     snaps_for_fs.sort(key=itemgetter('creationTime'))
     return snaps_for_fs
@@ -702,7 +733,12 @@ def main():
     signals.signal_handling()
     setup_logging_levels(loglevel, snapshots_level=loglevel, background_level=loglevel)
     log.info(f"Version info: {version_string()}")
-    snapshots.run_schedule_tests()    # scheduling computation self tests for snapshots module
+    
+    check_other_snaptool_args(args)
+    
+    # run scheduling computation self tests for snapshots module
+    # but don't raise errors for expected failures 
+    snapshots.run_schedule_tests(raise_expected_errors=False)    
 
     snaptool_config = SnaptoolConfig(args.configfile, args)
 
@@ -743,8 +779,17 @@ def main():
 
     try:
         fs_list = snaptool_config.cluster_connection.call_weka_api("filesystems_list", {})
-        for fs in fs_list:
-            log.info(f"fs {fs['name']}: obs_buckets: {fs['obs_buckets']}")
+        
+        if isinstance(fs_list, list):
+            for fs in fs_list:
+                msg = f"fs {fs['name']}: obs_buckets: {fs['obs_buckets']}"
+                print(msg)
+                log.info(msg)
+        else:
+            for fsid, fsdict in fs_list.items():
+                msg = f"fs {fsdict['name']}: obs_buckets: {fsdict['obs_buckets']}"
+                print(msg)
+                log.info(msg)
     except Exception as exc:
         log.error(f"Error getting obs_s3_list or filesystems info: {exc}")
    

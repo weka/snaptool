@@ -2,15 +2,16 @@ ansible-core==2.12.2
 asn1crypto==1.2.0
 babel==2.12.1
 flask==2.3.2
-pandas==1.1.5
-pip-chill==1.0.3
-pipdeptree==2.9.3
+pandas
+pip-chill
+pipdeptree
 ply==3.11
 pyinstaller==5.13.0
 requests==2.31.0
 typing-extensions==4.1.1
 tzdata==2023.3
-wekalib==1.4.4
+# wekalib==1.4.4
+wekalib==1.5.0
 # altgraph==0.17.2 # Installed as dependency for pyinstaller
 # blinker==1.6.2 # Installed as dependency for flask
 # certifi==2023.5.7 # Installed as dependency for requests

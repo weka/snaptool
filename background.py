@@ -287,7 +287,7 @@ def background_processor():
                     continue
                 else:
                     raise  # API error - let calling routine handle it
-
+        
         if len(status) == 0:
             # hmm... this one doesn't exist on the cluster? Let calling routine handle it
             # might be on purpose, or checking that it got deleted
@@ -296,6 +296,8 @@ def background_processor():
             log.warning(f"More than one snapshot returned for {fsname}/{snapname}")
         else:
             log.debug(f"Snapshot status for {fsname}/{snapname}: {status}")
+        if isinstance(status, dict):
+            status = list(status.values())
 
         return status[0]
 

@@ -19,6 +19,12 @@ months_long_names = list(calendar.month_name)
 months_abbr_names.remove('')
 months_long_names.remove('')
 months_all_names = months_abbr_names + months_long_names
+# RETAIN_MAX is the max allowed for retain: spec in schedules
+RETAIN_MAX = 365  
+# RETAIN_MIN is the lowest value RETAIN_MAX can be set to   
+RETAIN_MIN = 99
+# RETAIN_LIIMIT is the highest value RETAIN_MAX can  be set to
+RETAIN_LIMIT = 3000
 
 def is_everyday(every):
     return str(every).lower() == "day"
@@ -71,13 +77,13 @@ def _parse_spec_int(str_num, spec_name, name, min_allowed, max_allowed):
         log.error(f"Invalid schedule spec {spec_name}: {str_num} for schedule {name} should be an int: {exc}")
         raise
     if result < min_allowed or result > max_allowed:
-        log.error(f"Integer out of range: {result} for {spec_name} " +
-                  f"in schedule {name} - should be in the range [{min_allowed}-{max_allowed}]")
+        log.error(f"Schedule '{name}', specification '{spec_name}': integer value {result} is out of range. " +
+                  f"It should be in the range [{min_allowed}-{max_allowed}]")
         if result < min_allowed:
-            log.error(f"    Defaulting to {min_allowed}")
+            log.error(f"    Using minimum value allowed ({min_allowed}) instead of {result}")
             return min_allowed
         else:
-            log.error(f"    Defaulting to {max_allowed}")
+            log.error(f"    Using maximum value allowed ({max_allowed}) instead of {result}")
             return max_allowed
     return result
 
@@ -86,7 +92,7 @@ def _parse_interval(interval, name):
     return result
 
 def _parse_retain(retain, name):
-    result = _parse_spec_int(retain, 'retain', name, 0, 99)
+    result = _parse_spec_int(retain, 'retain', name, 0, RETAIN_MAX)
     return result
 
 def _parse_day_of_month(dom, name):
@@ -105,14 +111,18 @@ def _parse_upload(upload, name):
         log.error(f"Defaulting to false.")
         return False
 
-def _parse_time(at, name="Unknown"):
+def _parse_time(at, name="Unknown", raise_errors=True):
     try:
         ignored_date = "2020/01/01 "
         result = parser.parse(ignored_date + at)
     except parser.ParserError as exc:
         errmsg = f"Error parsing time: Invalid time: '{at}' for schedule {name}: {exc}"
-        log.error(errmsg)
-        raise
+        if raise_errors:
+            log.error(errmsg)
+            raise
+        else:
+            log.warning(f"{errmsg}; returning now()")
+            result = datetime.now()
     return result
 
 def _parse_days(everyspec):
@@ -375,7 +385,7 @@ def _run_schedule_test(test_name, entry, test_time, expected):
         log.error(f"Self test {test_name} FAILED.  Check debug logs.")
         log.error(f"       entry: {entry}")
 
-def run_schedule_tests():
+def run_schedule_tests(raise_expected_errors=True):
     log.info(f"Snapshots schedule tests starting")
     entry = MonthlyScheduleEntry("M-Jan-2-8am", _parse_months('Jan'), 5, _parse_time("8am"), 2, False)
     _run_schedule_test("m01", entry, datetime(2021, 6, 23, 15, 30, 59), "2022-01-02 08:00:00")
@@ -433,11 +443,12 @@ def run_schedule_tests():
                                   _parse_time("2359"), 1, False)
     _run_schedule_test("i20-now-test", entry, datetime.now(), str(datetime.now() + relativedelta(second=0, microsecond=0)))
     try:
-        entry = IntervalScheduleEntry("I-everyday-parsetime", _parse_days('day'), 4, _parse_time("256", name="test256"),
-                                  _parse_time("2359"), 1, False)
+        entry = IntervalScheduleEntry("I-everyday-parsetime", _parse_days('day'), 4, 
+                                      _parse_time("256", name="test256", raise_errors=raise_expected_errors),
+                                    _parse_time("2359"), 1, False)
         _run_schedule_test("i21-now-test", entry, datetime.now(), str(datetime.now() + relativedelta(second=0, microsecond=0)))
     except Exception as exc:
-       log.error(f"Exception for I-everyday-parsetime parsing 256 {exc}")
+       log.info(f"(Expected error) Exception for I-everyday-parsetime parsing 256 {exc}")
     log.info(f"Snapshots schedule tests complete")
 
 
