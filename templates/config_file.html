@@ -5,7 +5,18 @@
 {% endblock %}
 
 {% block content %}
-<pre>
-{{ filetext }}
-</pre>
+<form action="{{ url_for('.config_file_submit') }}" method="post">
+    <div>
+      <textarea name="configtextinput" rows="25" style="width: 90%" >{{ filetext }}
+      </textarea>
+    </div>
+    <div><br></div>
+    <div>
+      <input type="submit" class="start-button" value="Save Changes">
+    </div>
+    <div><br></div>
+  </form>
+<div><br></div>
+<textarea name="configmessages" id="configmessages" rows="8" style="width: 90%" >{{ msgtext }}
+</textarea>
 {% endblock %}

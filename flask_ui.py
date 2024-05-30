@@ -8,6 +8,8 @@ import background
 import traceback
 import os
 import requests
+import yamale
+import yaml
 
 
 app = Flask(__name__)
@@ -67,13 +69,45 @@ def show_all_snaps():
 @app.route("/config_file")
 def show_config_file():
     try:
-        if sconfig.configfile is not None:
-            if os.path.exists(sconfig.configfile):
-                with open(sconfig.configfile, "r") as f:
-                    contents = f.read()
-                return render_template('config_file.html', filetext=contents)
-            else:
-                return render_template("error.html", message=f"{sconfig.configfile} not found")
+        if request.method == "GET":
+            if sconfig.configfile is not None:
+                if os.path.exists(sconfig.configfile):
+                    with open(sconfig.configfile, "r") as f:
+                        contents = f.read()
+                    return render_template('config_file.html', filetext=contents, msgtext="")
+                else:
+                    return render_template("error.html", message=f"{sconfig.configfile} not found")
+    except Exception as exc:
+        html = traceback.format_exc()
+        return render_template("error.html", message=f"error: {html}")
+
+@app.route("/config_file_submit", methods=["POST"])
+def config_file_submit():
+    try:
+        if request.method == "POST":
+            changedtxt = request.form.get('configtextinput', default="Oops - get returned nothing")
+            try:
+                schema = yamale.make_schema("./static/snaptool-config-schema.yaml")
+                data = yamale.make_data(content=changedtxt)
+                validate_list = yamale.validate(schema, data)
+                with open(sconfig.configfile, "w") as f:
+                    f.write(changedtxt)
+                msgs = f"Saved.  No syntax errors found.\nFile is {sconfig.configfile}."
+                msgs += f"\n\nChanges should be picked up by Snaptool within a minute."
+                return render_template('config_file.html', 
+                                   filetext=f"{changedtxt}", 
+                                   msgtext=msgs)
+            except ValueError as exc:
+                html = traceback.format_exc()
+                msgs = [str(v) for v in exc.results]
+                return render_template('config_file.html', 
+                    filetext=f"{changedtxt}", 
+                    msgtext=f"Not Saved! Error validating yaml: \n{exc}")
+            except yaml.parser.ParserError as exc:
+                html = traceback.format_exc()
+                return render_template('config_file.html', 
+                    filetext=f"{changedtxt}", 
+                    msgtext=f"Not Saved! Parse error in yaml (indent or space/tab error?): \n\n{exc}")
     except Exception as exc:
         html = traceback.format_exc()
         return render_template("error.html", message=f"error: {html}")

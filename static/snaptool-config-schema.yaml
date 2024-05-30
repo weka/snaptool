@@ -1,0 +1,32 @@
+cluster:
+  auth_token_file: str()
+  hosts: include('hostlist')
+  force_https: bool()   
+  verify_cert: bool()   
+
+snaptool:
+  port: int()
+
+filesystems: include('filesystem_and_schedules')
+  
+schedules: map(include('group'), include('scheduleEntries'), key=str(max=19, exclude=" "))
+
+---
+
+hostlist: any(str(), list(str()))
+
+--- 
+
+filesystem_and_schedules: map(str(), list(str(exclude=" ")), key=str(exclude=" "))
+
+scheduleEntries: 
+  every: any(enum('month', 'day'), str())
+  retain: int(min=0, required=False)
+  at: any(int(min=0, max=2359), str(), required=False)
+  until: any(int(min=0, max=2359), str(), required=False)
+  interval: int(min=1, max=1439, required=False)
+  day: int(min=1, max=31, required=False)
+  upload: any(str(), bool(), required=False)
+
+group: map(include('scheduleEntries'), key=str(max=19, exclude=" "))
+

@@ -437,6 +437,7 @@ def get_snapgroups_for_snaptime(snapgroup_list, snaptime):
 def get_file_mtime(path):
     mtimeos = os.path.getmtime(path)
     return datetime.datetime.fromtimestamp(mtimeos)
+
 class SnaptoolConfig(object):
     def __init__(self, configfile, args):
         self.args = args
