@@ -200,6 +200,8 @@ class IntentLog(object):
         # if there are any deleted local snapshots that aren't marked deleted, mark them
         if cluster:
             all_snaps = self.get_snapshots(cluster)
+            if isinstance(all_snaps, dict):
+                all_snaps = all_snaps.values()
             if all_snaps and len(all_snaps) > 0:    # only do cleanup if we're sure we have a connection
                 log.info(f"cluster all_snaps: {len(all_snaps)}")
                 local, remote, _ = self.get_records_pd()
@@ -343,10 +345,14 @@ def background_processor():
         fsdicts = getFileSystems(cluster)
         fsinfo = None
         buckets = []
+        if isinstance(fsdicts, dict):
+            fsdicts = fsdicts.values()
         for fs in fsdicts:
+            log.info(f"fs info {fs}, target name= {fsname}")
             if fs['name'] == fsname:
                 fsinfo = fs
                 buckets = fsinfo['obs_buckets']
+                log.info(f"target name= {fsname}, buckets={buckets}")
                 break
         for b in buckets:
             if b['mode'].lower() == mode.lower():

@@ -10,6 +10,8 @@ import os
 import requests
 import yamale
 import yaml
+from datetime import datetime
+
 
 
 app = Flask(__name__)
@@ -93,7 +95,7 @@ def config_file_submit():
                 with open(sconfig.configfile, "w") as f:
                     f.write(changedtxt)
                 msgs = f"Saved.  No syntax errors found.\nFile is {sconfig.configfile}."
-                msgs += f"\n\nChanges should be picked up by Snaptool within a minute."
+                msgs += f"\n\nAny changes should be picked up by Snaptool within a minute."
                 return render_template('config_file.html', 
                                    filetext=f"{changedtxt}", 
                                    msgtext=msgs)
@@ -148,7 +150,10 @@ def snaptool_main_menu():
         if sconfig and sconfig.schedules_dict and sconfig.configfile:
             app.logger.info(f"configobj: {sconfig} ie: {sconfig.ignored_errors} e:{sconfig.errors}")
             app.logger.info(f"scheduleddict: {sconfig.schedules_dict}")
-            return render_template("index.html", configobj=sconfig, q=q, q_size=q_size, progress=progress)
+            servertime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            return render_template("index.html", configobj=sconfig, q=q, q_size=q_size, 
+                                   servertime=servertime,
+                                   progress=progress)
         elif not sconfig:
             return render_template("error.html", message="sconfig not initialized")
         elif not sconfig.schedules_dict:

@@ -1,5 +1,5 @@
 .DS_Store
-
+/venv.old/
 __pycache__
 __pycache__/*
 loki_data/*

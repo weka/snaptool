@@ -19,6 +19,8 @@ hostlist: any(str(), list(str()))
 
 filesystem_and_schedules: map(str(), list(str(exclude=" ")), key=str(exclude=" "))
 
+group: map(include('scheduleEntries'), key=str(max=19, exclude=" "))
+
 scheduleEntries: 
   every: any(enum('month', 'day'), str())
   retain: int(min=0, required=False)
@@ -28,5 +30,4 @@ scheduleEntries:
   day: int(min=1, max=31, required=False)
   upload: any(str(), bool(), required=False)
 
-group: map(include('scheduleEntries'), key=str(max=19, exclude=" "))
 
