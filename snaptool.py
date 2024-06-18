@@ -294,7 +294,7 @@ class ClusterConnection(object):
             try:
                 log.debug(f"calling api {method} with {parms}")
                 result = self.weka_cluster.call_api(method, parms)
-                log.debug(f"api call {method} with {parms} returned: {result}")
+                log.debug(f"api call {method} with {parms} returned type: {type(result)}, len: {len(result)}")
                 return result
             except wekalib.exceptions.APIError as exc:
                 raise_exc = exc
