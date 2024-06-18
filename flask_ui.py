@@ -76,7 +76,10 @@ def show_config_file():
                 if os.path.exists(sconfig.configfile):
                     with open(sconfig.configfile, "r") as f:
                         contents = f.read()
-                    return render_template('config_file.html', filetext=contents, msgtext="")
+                    if sconfig.args.no_edit is False:
+                        return render_template('config_file_edit.html', filetext=contents, msgtext="")
+                    else:
+                        return render_template('config_file_view.html', filetext=contents, msgtext="")
                 else:
                     return render_template("error.html", message=f"{sconfig.configfile} not found")
     except Exception as exc:
@@ -94,20 +97,20 @@ def config_file_submit():
                 validate_list = yamale.validate(schema, data)
                 with open(sconfig.configfile, "w") as f:
                     f.write(changedtxt)
-                msgs = f"Saved.  No syntax errors found.\nFile is {sconfig.configfile}."
+                msgs = f"Saved.  No first-pass syntax errors found.\nFile is {sconfig.configfile}."
                 msgs += f"\n\nAny changes should be picked up by Snaptool within a minute."
-                return render_template('config_file.html', 
+                return render_template('config_file_edit.html', 
                                    filetext=f"{changedtxt}", 
                                    msgtext=msgs)
             except ValueError as exc:
                 html = traceback.format_exc()
                 msgs = [str(v) for v in exc.results]
-                return render_template('config_file.html', 
+                return render_template('config_file_edit.html', 
                     filetext=f"{changedtxt}", 
                     msgtext=f"Not Saved! Error validating yaml: \n{exc}")
             except yaml.parser.ParserError as exc:
                 html = traceback.format_exc()
-                return render_template('config_file.html', 
+                return render_template('config_file_edit.html', 
                     filetext=f"{changedtxt}", 
                     msgtext=f"Not Saved! Parse error in yaml (indent or space/tab error?): \n\n{exc}")
     except Exception as exc:

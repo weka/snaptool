@@ -80,6 +80,9 @@ def parse_snaptool_args():
                             # help="max value for schedule 'retain'"
                             help=argparse.SUPPRESS
                             )
+    argparser.add_argument("--no-edit", dest="no_edit", default=False, action='store_true',
+                           help="whether to allow config file editing in the UI.  Default is True"
+                           )
     args = argparser.parse_args()
 
     if args.version:

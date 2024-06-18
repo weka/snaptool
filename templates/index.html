@@ -10,9 +10,9 @@
 <div class="divwrapper">
 <div class="divwrapperleft">
   <h1>Snaptool Status</h1>
-  <p>Next snap:
-    {{ configobj.next_snap_time }}</p>
-  <p><br></p>
+  <p></p>
+  <p>Next snap: {{ configobj.next_snap_time }}</p>
+  <p></p>
   <p>Server time: {{ servertime }}</p>
   </div>
   <div class="divwrapperright">
@@ -24,14 +24,14 @@
         {% endfor %}
       {% endif %}
     </table>
-    <h1></h1>
+    <h1><br></h1>
     <table class="configinfotable">
+      <tr><td>Cluster Name</td><td> {{ configobj.cluster_connection.weka_cluster_name }}</td>
       <tr><td>Cluster Connection Hosts:</td><td> {{ configobj.cluster_connection.clusterspec }}</td>
       <tr><td>Authfile:</td><td>  {{ configobj.cluster_connection.authfile }}</td>
       <tr><td>Config file:</td><td>  {{ configobj.configfile }}</td>
       <tr><td>Configuration file modification time:</td><td>  {{ configobj.configfile_time.strftime("%x %X") }}</td>
       <tr><td>Cluster connected since:</td><td>  {{ configobj.cluster_connection.connected_since.strftime("%x %X") }}</td>
-      <tr><td>Cluster Name</td><td> {{ configobj.cluster_connection.weka_cluster_name }}</td>
       </table>
     </div>
 </div>

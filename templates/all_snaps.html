@@ -1,25 +1,75 @@
 {% extends 'base.html' %}
-
+  
 {% block header %}
-  <h1>All cluster snapshots</h1>
+  <h1>All Existing Cluster Snapshots</h1>
 {% endblock %}
 
 {% block content %}
+<script>
+  function sortTable(i1, i2) {
+    var table, rows, i, swapping, swapLines, i1element, i2element, nextI1element, nextI2element;
+    var currentsortstr, currentrow, nextsortstr, nextrow, revswap;
+    table = document.getElementById("snapTable");
+    swapping = true;
+    while (swapping) {
+      swapping = false;
+      rows = table.rows;
+      for (i = 1; i < (rows.length - 1); i++) {
+        swapLines = false;
+        revswap = false;
+        currentrow = rows[i].getElementsByTagName("TD");
+        nextrow = rows[i + 1].getElementsByTagName("TD");
+        i1element = (currentrow[i1]).innerHTML;
+        i2element = (currentrow[i2]).innerHTML;
+        nextI1element = (nextrow[i1]).innerHTML;
+        nextI2element = (nextrow[i2]).innerHTML;
+        if ((i1element.length == 0) && (nextI1element.length > 0)) {
+          swapLines = true;
+          break;
+        }
+        currentsortstr = (i1element).concat(i2element);
+        nextsortstr = (nextI1element).concat(nextI2element);
+        if ((i1element.length > 0) && (nextI1element.length > 0) && (currentsortstr > nextsortstr)) {
+          swapLines = true;
+          break;
+        }
+      }
+      if (swapLines) {
+        rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+        swapping = true;
+      }
+    }
+  }
+</script>
+
+<h4>Existing cluster snapshots:</h4>
 
 <div class="locdiv">
-  <table class="loctable">  
+  <table class="loctable" id="snapTable">
     <thead>
       <tr>
-        <th class="loctableth">Filesystem</th>
-        <th class="loctableth">Snapname</th>
-        <th class="loctableth">Local Locator</th>
-        <th class="loctableth">Remote Locator</th>
+        <th class="loctableth">Filesystem
+          <button class="loctableth" onclick="sortTable(0,1)">&#x2191</button>
+        </th>
+        <th class="loctableth">Snapname
+          <button class="loctableth" onclick="sortTable(1,0)">&#x2191</button>
+        </th>
+        <th class="loctableth">Access Point
+          <button class="loctableth" onclick="sortTable(2,0)">&#x2191</button>
+        </th>
+        <th class="loctableth">Local Locator
+          <button class="loctableth" onclick="sortTable(3,0)">&#x2191</button>
+        </th>
+        <th class="loctableth">Remote Locator
+          <button class="loctableth" onclick="sortTable(4,0)">&#x2191</button>
+        </th>
       </tr>
     </thead>
   {% for t in allsnaps %}
       <tr>
         <td>{{t['filesystem']}}</td>
         <td>{{t['name']}}</td>
+        <td>{{t['accessPoint']}}</td>
         <td>{{t['localStowInfo']['locator']}}</td>
         <td>{{t['remoteStowInfo']['locator']}}</td>
       </tr>

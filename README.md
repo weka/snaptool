@@ -5,11 +5,18 @@ A solution that implements snapshot management for Weka Clusters
 
 # Features
 
+- New in release 1.6:
+    - maximum snapshots per schedule (per filesystem) is now 365
+    - new UI tab that displays a list of sortable existing cluster snapshots, not just those created by snaptool
+    - UI config file tab now allows editing of the config file by default.   This can be disabled with command line argument --no-edit
+    - bug fixes, better error checking.  Better snapshot name verification before deleting old snapshots.
+
 - New in release 1.5: 
     - a status GUI that provides web interface to view snapshot schedules, The upload/download queue for snapshot uploads, and locator IDs for snapshots that have beenn successfully uploaded.  By default this web server runs on http://(snaptool server):8090 .  The port can be set in the snaptool.yml file.   Setting it to 0 will disable the web server.
     - 'remote' option to the upload: keyword in schedules
 
 - Schedule snapshots monthly, daily, or at multiple (minute granularity) intervals during a daily schedule.
+- If a filesystem is scheduled for multiple snaps in the same minute by different schedules, the schedule with the longer interval between snaps will take precedence over shorter intervals.
 - Retention rules - each schedule controls the number of snapshot copies to retain.
 - Expired snapshots are automatically deleted as the schedule exceeds the specified retention.  
 - Optionally, snapshots can automatically be uploaded to an S3 Object Store, either local or remote (a tiering object store, or a remote backup object store).  
