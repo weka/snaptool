@@ -89,6 +89,9 @@ def show_config_file():
 @app.route("/config_file_submit", methods=["POST"])
 def config_file_submit():
     try:
+        if sconfig.args.no_edit is True:
+            return render_template("error.html", 
+                                   message=f"error: config_file_submit, but editing disabled.")
         if request.method == "POST":
             changedtxt = request.form.get('configtextinput', default="Oops - get returned nothing")
             try:
