@@ -5,6 +5,8 @@ TOOL=snaptool
 MAIN=snaptool.py
 TARGET=tarball/$TOOL
 
+source venv/bin/activate
+
 pyinstaller --onefile --add-data "templates:templates" --add-data "static:static" $MAIN
 
 mkdir -p $TARGET
@@ -19,3 +21,4 @@ chmod +xx $TARGET/install.sh
 
 cd tarball
 tar cvzf ../${TOOL}.tar $TOOL
+

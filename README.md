@@ -6,7 +6,7 @@ A solution that implements snapshot management for Weka Clusters
 # Features
 
 - New in release 1.6:
-    - maximum snapshots per schedule (per filesystem) is now 365
+    - maximum snapshots per schedule, per filesystem, is now 365
     - new UI tab that displays a list of sortable existing cluster snapshots, not just those created by snaptool
     - UI config file tab now allows editing of the config file by default.   This can be disabled with command line argument --no-edit
     - bug fixes, better error checking.  Better snapshot name verification before deleting old snapshots.

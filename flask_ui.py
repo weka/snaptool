@@ -8,7 +8,7 @@ import background
 import traceback
 import os
 import requests
-import yamale
+#import yamale
 import yaml
 from datetime import datetime
 
@@ -95,13 +95,15 @@ def config_file_submit():
         if request.method == "POST":
             changedtxt = request.form.get('configtextinput', default="Oops - get returned nothing")
             try:
-                schema = yamale.make_schema("./static/snaptool-config-schema.yaml")
-                data = yamale.make_data(content=changedtxt)
-                validate_list = yamale.validate(schema, data)
+                #schema = yamale.make_schema("./static/snaptool-config-schema.yaml")
+                #data = yamale.make_data(content=changedtxt)
+                #validate_list = yamale.validate(schema, data)
+                data = yaml.safe_load(changedtxt)
+                # logging.info(f"data {data}")
                 with open(sconfig.configfile, "w") as f:
                     f.write(changedtxt)
                 msgs = f"Saved.  No first-pass syntax errors found.\nFile is {sconfig.configfile}."
-                msgs += f"\n\nAny changes should be picked up by Snaptool within a minute."
+                msgs += f"\n\nChanges should be picked up by Snaptool within a minute."
                 return render_template('config_file_edit.html', 
                                    filetext=f"{changedtxt}", 
                                    msgtext=msgs)

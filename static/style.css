@@ -156,3 +156,6 @@ nav a:first-child {
 nav a img {
     vertical-align: middle;
 }
+.configmessages {
+    font-weight: bold;
+}
