@@ -411,6 +411,7 @@ def background_processor():
         op = q_upload_obj.operation
         uuid = q_upload_obj.uuid
         cluster = q_upload_obj.cluster
+        bucketname = ''
         locator = ''
         bq = background_q
 
@@ -453,7 +454,7 @@ def background_processor():
 
         elif stowStatus == "SYNCHRONIZED":
             # we should only ever get here when replaying the log and this one was already in progress
-            log.error(f"upload of {fsname}/{snapname} was already complete. Logging it as such")
+            log.warn(f"upload of {fsname}/{snapname} was already complete. Logging it as such")
             bucketname = getFilesystemBucketName(cluster, fsname, obs_mode)
             upload_completed(fsname, snapname, op, uuid, locator=locator, bucketname=bucketname)
             return

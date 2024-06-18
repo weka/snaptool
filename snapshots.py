@@ -201,7 +201,9 @@ def parse_schedule_entry(schedule_groupname, schedule_name, sched_spec):
     elif every_type == 'day' and interval:
         entry = IntervalScheduleEntry(name, every, retain, at, until, interval, upload)
     elif every_type == 'day':
-        entry = DailyScheduleEntry(name, every, retain, at, upload)
+        sortpri = 50 + len(every)
+        log.info(f"Daily schedule every: {every}, interval: {interval}, sort priority: {sortpri}")
+        entry = DailyScheduleEntry(name, every, retain, at, upload, sort_priority=sortpri)
     else:  # error
         log.error(f"Invalid 'every:' spec - schedule: {name}, every: {every}")
         log.error(f"   Ignoring entry.")
