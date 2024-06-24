@@ -197,7 +197,12 @@ example snaptool.yml:
 
 The format of the snapshot names is schedulename.YYMMDDHHMM, with the access point @GMT-YYYY.MM.DD-HH.MM.SS.   For example, a snapshot might be named 'Weekends-noon.2103101200' and have the access point @GMT-2021.03.10-12.00.00.  The snapshot name will be in the local timezone, and the access point in GMT.  (In this example, the server timezone is set to GMT time)
     
-For grouped snapshots, the name will be schedulegroupname_schedulename.   The full name can't be longer than 18 characters.  For example, 'default' schedule group with an 'hourly' schedule in it might be named 'default_hourly.YYMMDDHHMM'.
+Not that Snapshot names in general can't be longer than 31 characters in Weka file systems.   This means 
+snaptool schedule names, because of the '.YYMMDDHHMM' that gets added, can't be longer than 19 characters.
+
+For grouped snapshots, the name will be schedulegroupname_schedulename.   So that full concatenation can't be longer than 19 characters.  For example, a 'default' schedule group with an 'hourly' schedule in it will be named 'default_hourly.YYMMDDHHMM'.  Which is fine - it is short enough to work.   'default_hourlyWeekdays.YYMMDDHHMM' would be too long, and is an error.   
+ 
+Snaptool logs an error and ignores the schedule if the name is too long.
 
 When deleting snapshots automatically, based on the 'retain:' keyword, snapshots for a schedule and filesystem are sorted by creation time, and the oldest snapshots will be deleted until there are "retain:" snapshots left for the applicable Schedule and filesystem.
 
