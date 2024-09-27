@@ -5,6 +5,12 @@ TOOL=snaptool
 MAIN=snaptool.py
 TARGET=tarball/$TOOL
 
+if [ ! -d ./venv ]; then
+   echo No venv found - creating...
+   ./venv-create.sh
+else
+   echo venv exists.
+fi
 source venv/bin/activate
 
 pyinstaller --onefile --add-data "templates:templates" --add-data "static:static" $MAIN
