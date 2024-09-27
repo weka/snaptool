@@ -32,7 +32,7 @@ import background
 import flask_ui
 from contextlib import contextmanager
 
-VERSION = "1.6.1"
+VERSION = "1.6.2"
 
 # get the root logger, get snaptool logger
 log = logging.getLogger()
@@ -179,12 +179,17 @@ def setup_logging_initial():
     log.info("---------------------- Program initialize, log handlers added ------------")
 
 
-def setup_logging_levels(snaptool_level, snapshots_level=logging.ERROR,
+def setup_logging_levels(args, snaptool_level, snapshots_level=logging.ERROR,
                          background_level=logging.ERROR, wekalib_level=logging.ERROR):
     log.setLevel(snaptool_level)
     log.info(" ---------------------- Setting new log levels ----------------------------")
 
-    urllib3.add_stderr_logger(level=logging.ERROR)
+    if args.test_connection_only:
+        urllib3.add_stderr_logger(level=logging.WARNING)
+        wekalib_level=logging.INFO
+    else:
+        urllib3.add_stderr_logger(level=logging.ERROR)
+
     logging.getLogger("wekalib.wekacluster").setLevel(wekalib_level)
     logging.getLogger("wekalib.wekaapi").setLevel(wekalib_level)
     logging.getLogger("wekalib.sthreads").setLevel(wekalib_level)
@@ -262,6 +267,7 @@ class ClusterConnection(object):
     def connect(self):
         connected = False
         msg = ""
+        attrException, otherException = False, False
         try:
             log.info("Attempting cluster connection...")
             self.weka_cluster = wekacluster.WekaCluster(self.clusterspec, self.authfile,
@@ -272,16 +278,17 @@ class ClusterConnection(object):
             self.weka_cluster_name = self.weka_cluster.name
             self.connected_since = now()
             connected = self.weka_cluster
-        except Exception as exc:
+        except BaseException as excinst:
+            otherException = True
+            msg2 = f"      ERROR {excinst}"
+        if attrException or otherException:
             msg1 = f"Connecting to cluster failed. "
             msg1 += f" Connection options: hosts='{self.clusterspec}'"
             msg1 += f", mgmt_port={self.mgmt_port}"
             msg1 += f", authfile='{self.authfile}'"
             msg1 += f", verify_cert={self.verify_cert}"
-            msg2 = f"      ERROR {exc}"
-            log.error(msg1)
-            log.error(msg2)
             msg = msg1 + msg2
+            log.error(msg1)
         return connected, msg
 
     def connection_info_different(self, new_connection):
@@ -390,11 +397,13 @@ class ClusterConnection(object):
 
 def _exit_with_connection_status(connected):
     if connected:
-        print("Connection Succeeded")
-        sys.exit(0)
+        print(f"\nConnection Succeeded")
+        exit_code = 0
     else:
-        print("Connection Failed")
-        sys.exit(1)
+        print(f"\nConnection Failed")
+        exit_code = 1
+    print(f"\n--test-connection-only - exiting with code {exit_code}.")
+    sys.exit(exit_code)
 
 class ScheduleGroup(object):
     def __str__(self):
@@ -755,7 +764,7 @@ def main():
     setup_logging_initial()
     # handle signals (ie: ^C and such)
     signals.signal_handling()
-    setup_logging_levels(loglevel, snapshots_level=loglevel, background_level=loglevel)
+    setup_logging_levels(args, loglevel, snapshots_level=loglevel, background_level=loglevel)
     log.info(f"Version info: {version_string()}")
     
     check_other_snaptool_args(args)
