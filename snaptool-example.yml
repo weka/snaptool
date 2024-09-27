@@ -47,9 +47,12 @@ cluster:
    hosts: weka1,weka2,weka3
    force_https: True   # only 3.10+ clusters support https
    verify_cert: False  # default cert cannot be verified
+   # mgmt_port: 14000    # port on listed hosts to be used for 
+                         # api calls to the weka cluster.   Default is 14000
 
 snaptool:
-   port: 8090         # use 0 to disable the status web ui.  This overrides the command line port argument
+   port: 8090    # http port for status web ui.  use 0 to disable.  
+                 # This overrides the command line port argument
 
 filesystems:
    fs01: default

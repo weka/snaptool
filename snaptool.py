@@ -249,13 +249,14 @@ def _parse_check_top_level(args, config):
         _config_parse_error(args, msg)
 
 class ClusterConnection(object):
-    def __init__(self, clusterspec, authfile, force_https, cert_check):
+    def __init__(self, clusterspec, authfile, force_https, cert_check, mgmt_port):
         self.weka_cluster = None
         self.weka_cluster_name = ""
         self.clusterspec = clusterspec
         self.authfile = authfile
         self.force_https = force_https
         self.verify_cert = cert_check
+        self.mgmt_port = mgmt_port
         self.connected_since = datetime.datetime.max
 
     def connect(self):
@@ -265,22 +266,30 @@ class ClusterConnection(object):
             log.info("Attempting cluster connection...")
             self.weka_cluster = wekacluster.WekaCluster(self.clusterspec, self.authfile,
                                                         force_https=self.force_https, 
-                                                        verify_cert=self.verify_cert)
+                                                        verify_cert=self.verify_cert,
+                                                        mgmt_port=self.mgmt_port)
             self.authfile = self.weka_cluster.authfile
             self.weka_cluster_name = self.weka_cluster.name
             self.connected_since = now()
             connected = self.weka_cluster
         except Exception as exc:
-            msg = f"Connection to cluster hosts '{self.clusterspec}'"
-            msg += f" failed with authfile '{self.authfile}' - {exc}"
-            log.error(msg)
+            msg1 = f"Connecting to cluster failed. "
+            msg1 += f" Connection options: hosts='{self.clusterspec}'"
+            msg1 += f", mgmt_port={self.mgmt_port}"
+            msg1 += f", authfile='{self.authfile}'"
+            msg1 += f", verify_cert={self.verify_cert}"
+            msg2 = f"      ERROR {exc}"
+            log.error(msg1)
+            log.error(msg2)
+            msg = msg1 + msg2
         return connected, msg
 
     def connection_info_different(self, new_connection):
         checks = [self.authfile != new_connection.authfile,
                     self.clusterspec != new_connection.clusterspec,
                     self.force_https != new_connection.force_https,
-                    self.verify_cert != new_connection.verify_cert]
+                    self.verify_cert != new_connection.verify_cert,
+                    self.mgmt_port != new_connection.mgmt_port]
         if any(checks):
             log.info(f"Connection_info_different checks: {checks}")
             return True
@@ -487,6 +496,12 @@ class SnaptoolConfig(object):
         cluster_yaml = {}
         if 'cluster' in self.config:
             cluster_yaml = self.config['cluster']
+        cluster_valid_keys = ['hosts', 'auth_token_file','force_https',
+                              'verify_cert','mgmt_port']
+        cluster_yml_keys = cluster_yaml.keys()
+        badkeys = set(cluster_yml_keys) - set(cluster_valid_keys)
+        if len(badkeys) > 0:
+            log.error(f"Cluster spec in snaptool yml config has extra keys: {badkeys}, ignoring...")
         if 'hosts' in cluster_yaml:
             clusterspec = cluster_yaml['hosts']
         else:
@@ -509,7 +524,11 @@ class SnaptoolConfig(object):
             verify_cert = _parse_bool(cluster_yaml['verify_cert'])
         else:
             verify_cert = True
-        result = ClusterConnection(clusterspec, authfile, force_https, verify_cert)
+        if 'mgmt_port' in cluster_yaml:
+            mgmt_port = int(cluster_yaml['mgmt_port'])
+        else:
+            mgmt_port = 14000
+        result = ClusterConnection(clusterspec, authfile, force_https, verify_cert, mgmt_port)
         return result
 
     def parse_snaptool_settings(self):

@@ -1,0 +1,30 @@
+#!/bin/bash 
+sdir=$(dirname $(realpath "$0"))
+
+if [[ -z "$2" ]] ; then
+    echo
+    echo "usage: $0 <git username> <email>"
+    echo "   required arguments not provided"
+    echo
+    exit
+fi
+
+nm="$1"
+em="$2"
+echo
+echo "Git setup - setting local git user to $nm / $em"
+
+git config --local user.name "$nm"
+git config --local user.email "$em"
+# 28800 is 8 hours
+echo "Git setup - setting credential cache to 28800 (8 hours)"
+git config --local credential.helper 'cache --timeout 28800'
+
+echo "Git setup - setting up global aliases for (un)ignore-changes etc"
+git config --global alias.ignore-changes 'update-index --skip-worktree'
+git config --global alias.unignore-changes 'update-index --no-skip-worktree'
+git config --global alias.ignored-changes '!git ls-files -v | grep "^S"'
+echo
+
+cd - 2&> /dev/null
+

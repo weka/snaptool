@@ -31,3 +31,4 @@ upload_intent.log
 /dist/
 /build/
 /venv/
+auth-token.json.bak
