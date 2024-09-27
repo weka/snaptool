@@ -5,6 +5,9 @@ A solution that implements snapshot management for Weka Clusters
 
 # Features
 
+- New in release 1.6.2:
+    - add 'mgmt_port:' keyword to 'cluster:' section of snaptool.yml config file.   This is the port used for calling the api.  It defaults to 14000 as before, but can now be changed. 
+
 - New in release 1.6:
     - maximum snapshots per schedule, per filesystem, is now 365
     - new UI tab that displays a list of sortable existing cluster snapshots, not just those created by snaptool
@@ -78,6 +81,7 @@ Cluster information is in the 'cluster:' section.  The hosts list is required.  
         hosts: 
         force_https: 
         verify_cert: 
+        mgmt_port:
 
 The snaptool: section allows a single keyword 'port:' which is the network port that will be used to run the web status UI.   If this is 0, the web status UI will be shut down.  The default is 8090 if not provided (if not provided, this can also be overriden at the command line, but the snaptool.yml setting will supercede the command line argument).
 
