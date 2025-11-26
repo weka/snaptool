@@ -25,7 +25,7 @@ pyinstaller-hooks-contrib==2024.7
 python-dateutil==2.8.2
 pytz==2024.1
 PyYAML==6.0.1
-requests==2.31.0
+requests==2.32.4
 resolvelib==0.5.4
 six==1.16.0
 typing_extensions==4.1.1
