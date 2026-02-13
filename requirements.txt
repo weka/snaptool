@@ -30,7 +30,7 @@ resolvelib==0.5.4
 six==1.16.0
 typing_extensions==4.1.1
 tzdata==2023.3
-urllib3==1.26.18
+urllib3==1.26.19
 wekalib==1.5.0
 Werkzeug==3.0.3
 yamale==5.2.1
