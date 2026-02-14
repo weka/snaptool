@@ -1,5 +1,5 @@
 altgraph==0.17.4
-ansible-core==2.12.2
+ansible-core==2.16.14
 asn1crypto==1.2.0
 Babel==2.12.1
 blinker==1.8.2
